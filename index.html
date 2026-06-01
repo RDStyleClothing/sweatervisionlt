@@ -766,7 +766,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.3</span>
+    <span class="version-badge">v1.4</span>
 
     <div class="header-spacer"></div>
 
@@ -1431,9 +1431,12 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
     }
   ];
 
-  const body = JSON.stringify({
-    contents: { parts },  // v5.4 format: object not array
-    generationConfig: { responseModalities: ['IMAGE', 'TEXT'] }
+  // Build request body with or without responseModalities.
+  // Some model endpoints reject the field with 400 "Unknown name responseModalities".
+  // In that case we silently retry without it so the call can still succeed.
+  const buildBody = (includeModalities) => JSON.stringify({
+    contents: { parts },
+    ...(includeModalities ? { generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } } : {})
   });
 
   // Try v1beta then v1 as fallback
@@ -1444,7 +1447,18 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
 
   let lastErr;
   for (const url of endpoints) {
-    const res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body });
+    // First attempt — include responseModalities (required for image-capable models)
+    let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(true) });
+
+    // If the model/endpoint doesn't recognise responseModalities, silently retry without it
+    if (res.status === 400) {
+      const errText = await res.text().catch(() => '');
+      if (errText.includes('responseModalities')) {
+        res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(false) });
+      } else {
+        throw new Error(`Gemini 400: ${errText}`);
+      }
+    }
 
     if (res.status === 429) throw new Error('429: Rate limited — will retry');
     if (res.status === 404) {
@@ -1963,11 +1977,16 @@ async function matchFiles() {
       }
     } else if (row.colorName || row.colorCode) {
       // Auto-match by colorName + colorCode (AND)
-      const name = row.colorName.toLowerCase().trim();
-      const code = row.colorCode.toLowerCase().trim();
-      const matches = [...state.chipFileIndex.entries()].filter(([fname]) =>
-        (!name || fname.includes(name)) && (!code || fname.includes(code))
-      );
+      // Normalize ' - ' → ' ' in both search terms and filenames so that
+      // 'Allure Blue - 31PH.jpg' matches searches for 'Allure Blue 31PH'
+      // or for 'Allure Blue' + '31PH' independently.
+      const normalize = s => s.replace(/ - /g, ' ');
+      const name = normalize(row.colorName.toLowerCase().trim());
+      const code = normalize(row.colorCode.toLowerCase().trim());
+      const matches = [...state.chipFileIndex.entries()].filter(([fname]) => {
+        const norm = normalize(fname);
+        return (!name || norm.includes(name)) && (!code || norm.includes(code));
+      });
       if (matches.length === 1) {
         row.chipFileHandle = matches[0][1];
         row.chipMatched    = matches[0][0];
