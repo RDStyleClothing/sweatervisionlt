@@ -1038,7 +1038,7 @@ html, body {
         <span class="form-hint">Controls torso proportions in the ghost mannequin render</span>
       </div>
         <div style="display:flex;gap:6px">
-          <input class="form-input" id="input-gemini-model" type="text" placeholder="gemini-2.0-flash-exp" oninput="saveKeys()" style="font-family:var(--font-mono);font-size:11px;flex:1" />
+          <input class="form-input" id="input-gemini-model" type="text" placeholder="gemini-2.5-flash-image" oninput="saveKeys()" style="font-family:var(--font-mono);font-size:11px;flex:1" />
           <button class="btn-sm" onclick="detectGeminiModels()" id="btn-detect" style="white-space:nowrap;flex-shrink:0">Detect →</button>
         </div>
         <span class="form-hint">Paste model string from v5.4, or click Detect to list models on your key</span>
@@ -1302,7 +1302,7 @@ function buildColorContext(hex) {
 ════════════════════════════════════════════════════════════════ */
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 // Gemini model is set in Settings (⚙) and stored in localStorage as svs_gemini_model
-// Default: gemini-2.0-flash-exp — update to match your v5.4 model if different
+// Default: gemini-2.5-flash-image — current Gemini image generation model (2.0-flash shut down June 2026)
 
 function getMimeType(filename) {
   const ext = (filename.split('.').pop()||'').toLowerCase();
@@ -1390,7 +1390,7 @@ Base instruction to enhance: Perform a professional 3D ghost mannequin e-commerc
 // ── Gemini → generated image (v5.4 prompt rules, exact copy) ─────
 async function callGemini(prompt, rawBase64, rawMime, options = {}) {
   const key         = localStorage.getItem('svs_gemini_key')   || '';
-  const model       = localStorage.getItem('svs_gemini_model') || 'gemini-2.0-flash-exp';
+  const model       = localStorage.getItem('svs_gemini_model') || 'gemini-2.5-flash-image';
   const mannequin   = (options.mannequin    || localStorage.getItem('svs_mannequin') || 'unisex').toLowerCase();
   const garmentType = (options.garmentType  || localStorage.getItem('svs_garment')   || 'top').toLowerCase();
   const isBottom    = garmentType === 'bottom';
@@ -1435,14 +1435,14 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
   // Some model endpoints reject the field with 400 "Unknown name responseModalities".
   // In that case we silently retry without it so the call can still succeed.
   const buildBody = (includeModalities) => JSON.stringify({
-    contents: { parts },
-    ...(includeModalities ? { generationConfig: { responseModalities: ['IMAGE', 'TEXT'] } } : {})
+    contents: [{ parts }],  // array format required by current Gemini API
+    ...(includeModalities ? { generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } } : {})
   });
 
-  // Try v1beta then v1 as fallback
+  // Try v1 first (current image models use v1), v1beta as fallback
   const endpoints = [
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
     `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`,
+    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
   ];
 
   let lastErr;
@@ -1450,11 +1450,16 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
     // First attempt — include responseModalities (required for image-capable models)
     let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(true) });
 
-    // If the model/endpoint doesn't recognise responseModalities, silently retry without it
+    // If the model/endpoint doesn't recognise responseModalities, silently retry without it.
+    // If the model explicitly can't generate images, surface a clean actionable message.
     if (res.status === 400) {
       const errText = await res.text().catch(() => '');
       if (errText.includes('responseModalities')) {
+        // Field not known on this endpoint — retry without it
         res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(false) });
+      } else if (errText.toLowerCase().includes('response modalities') || errText.toLowerCase().includes('does not support')) {
+        // Model is text-only — give a clear fix instruction
+        throw new Error('Model "' + model + '" does not support image generation. Open Settings \u2192 Detect \u2192 select a green-dot model (gemini-2.5-flash-image).');
       } else {
         throw new Error(`Gemini 400: ${errText}`);
       }
