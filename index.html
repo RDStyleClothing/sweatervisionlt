@@ -766,7 +766,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.5</span>
+    <span class="version-badge">v1.7</span>
 
     <div class="header-spacer"></div>
 
@@ -790,24 +790,32 @@ html, body {
   <!-- ─── SETUP BAR ──────────────────────────────────────────────────────── -->
   <div id="setup-bar">
 
-    <!-- Row 1: Body Type + Garment Type defaults -->
+    <!-- Row 1: Mode + Body Type + Garment Type defaults -->
     <div class="type-row">
-      <span class="type-label">Body Type</span>
+      <span class="type-label">Mode</span>
       <div class="type-group">
+        <button class="type-btn active" id="sb-mode-manifest" onclick="setMode('manifest')" title="Excel manifest + color chips — two-pass colorway pipeline">Manifest</button>
+        <button class="type-btn"        id="sb-mode-archive"  onclick="setMode('archive')"  title="Backdate old seasons — render every image in a folder as-is, no manifest, no chips">Archive</button>
+      </div>
+
+      <div class="type-divider"></div>
+
+      <span class="type-label" id="grp-body-label">Body Type</span>
+      <div class="type-group" id="grp-body">
         <button class="type-btn active" id="sb-mq-unisex" onclick="setMannequin('unisex')">Unisex</button>
         <button class="type-btn"        id="sb-mq-female" onclick="setMannequin('female')">Female</button>
         <button class="type-btn"        id="sb-mq-male"   onclick="setMannequin('male')">Male</button>
       </div>
 
-      <div class="type-divider"></div>
+      <div class="type-divider" id="grp-divider"></div>
 
-      <span class="type-label">Garment</span>
-      <div class="type-group">
+      <span class="type-label" id="grp-garment-label">Garment</span>
+      <div class="type-group" id="grp-garment">
         <button class="type-btn active" id="sb-gt-top"    onclick="setGarmentType('top')">Top</button>
         <button class="type-btn"        id="sb-gt-bottom" onclick="setGarmentType('bottom')">Bottom</button>
       </div>
 
-      <span class="type-hint">Global defaults — overridden per row by Excel columns</span>
+      <span class="type-hint" id="type-hint">Global defaults — overridden per row by Excel columns</span>
     </div>
 
     <!-- Row 2: Folder pickers + Process All -->
@@ -1077,6 +1085,7 @@ const state = {
   filter: 'all',
   activeRowIdx: null,
   batchRunning: false,
+  archiveMode: false,       // v1.7 — Archive Mode: render-as-is, no manifest, no chips
   inputs: { excel: false, raw: false, chip: false, output: false },
   folders: { raw: null, chip: null, output: null },
   rawFileIndex:  new Map(),
@@ -1898,6 +1907,144 @@ function buildRenderAsIsPrompt(row, mannequin, garmentType) {
   );
 }
 
+// ── v1.7 Archive Mode auto-detection ────────────────────────────
+// Claude vision classifies each image: garment type (top/bottom) and
+// body type (male/female/unisex). Replaces the manual setup-bar toggles,
+// which are hidden in Archive Mode. Uses the already-required Claude key —
+// same one-Claude-call-per-render cost profile as Manifest Mode.
+
+// Downscale source image to ≤512px JPEG for a cheap vision call
+function downscaleForVision(fileHandle, maxDim = 512) {
+  return fileHandle.getFile().then(file => new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
+      const cv = document.createElement('canvas');
+      cv.width  = Math.max(1, Math.round(img.naturalWidth  * scale));
+      cv.height = Math.max(1, Math.round(img.naturalHeight * scale));
+      cv.getContext('2d').drawImage(img, 0, 0, cv.width, cv.height);
+      URL.revokeObjectURL(url);
+      resolve(cv.toDataURL('image/jpeg', 0.85).split(',')[1]);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image decode failed')); };
+    img.src = url;
+  }));
+}
+
+// Returns { garment: 'top'|'bottom', body: 'male'|'female'|'unisex' } or null on failure.
+// Failure is NON-FATAL — render falls back to global defaults.
+async function classifyGarmentImage(fileHandle) {
+  const key = localStorage.getItem('svs_claude_key') || '';
+  if (!key) return null;
+
+  let imgB64;
+  try { imgB64 = await downscaleForVision(fileHandle); }
+  catch (_) { return null; }
+
+  const instruction =
+    'Classify the garment in this product/lookbook photo. Respond with ONLY a JSON object, no other text, no markdown fences:\n' +
+    '{"garment":"top"|"bottom","body":"male"|"female"|"unisex"}\n' +
+    'Rules: garment is "bottom" ONLY for pants, trousers, jeans, shorts, or skirts. ' +
+    'Everything else — sweaters, knit tops, cardigans, dresses, jackets, vests, full outfits where the top is the focus — is "top". ' +
+    'body is the intended wearer of the garment itself: clearly menswear → "male", clearly womenswear → "female", ambiguous or gender-neutral → "unisex". ' +
+    'Judge by the garment cut and styling, not by who is modeling it.';
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 60,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: imgB64 } },
+            { type: 'text',  text: instruction }
+          ]
+        }]
+      })
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const json = JSON.parse(text);
+    const garment = ['top','bottom'].includes(json.garment) ? json.garment : null;
+    const body    = ['male','female','unisex'].includes(json.body) ? json.body : 'unisex';
+    return garment ? { garment, body } : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+// ── v1.7 Archive Mode prompt ──────────────────────────────────────
+// Used for backdated seasons where most inputs are ON-MODEL photographs.
+// Single pass: extract the garment from the worn photo and render it as a
+// ghost mannequin EXACTLY as photographed — no restyling, no recoloring.
+function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
+  mannequin   = (mannequin   || localStorage.getItem('svs_mannequin') || 'unisex').toLowerCase();
+  garmentType = (garmentType || localStorage.getItem('svs_garment')   || 'top').toLowerCase();
+  const isBottom = garmentType === 'bottom';
+  const mannSpec =
+    mannequin === 'male'   ? 'Male torso proportions — broad shoulders, straight chest.' :
+    mannequin === 'female' ? 'Female torso proportions — narrower shoulders, curved chest.' :
+                             'Unisex neutral torso.';
+
+  const extraction =
+    `INPUT: The photograph may show this garment WORN BY A HUMAN MODEL, on a hanger, or laid flat. ` +
+    `If a person is present, REMOVE THE PERSON ENTIRELY — no skin, hair, hands, face, jewelry, or any ` +
+    `other garments they are wearing. Isolate ONLY the ${isBottom ? 'bottom garment' : 'top garment'}. ` +
+    `RECONSTRUCTION: Rebuild any areas of the garment hidden by the model's body, arms, hair, or pose ` +
+    `(interior back collar, occluded sleeves, hem, side seams) so they are consistent with the visible ` +
+    `construction, knit gauge, and drape. Straighten the garment into a natural front-facing ` +
+    `ghost mannequin presentation. ` +
+    `ABSOLUTE AS-IS RULE: Do NOT redesign, restyle, modernize, simplify, or alter the garment in ANY way. ` +
+    `Preserve the exact color, pattern, stripes, colorblocking, knit texture, stitch detail, trim, buttons, ` +
+    `zippers, logos, neckline shape, sleeve length, and proportions EXACTLY as photographed. ` +
+    `No color shift, no added details, no removed details. `;
+
+  if (isBottom) {
+    return (
+      `Perform a professional 3D ${mannequin} TRUE GHOST lower-body mannequin e-commerce render of the bottom garment in this photograph. ` +
+      extraction +
+      `MANNEQUIN: ${mannSpec} Show only from the waist down — floating waistband with invisible lower-body form underneath. ` +
+      `CRITICAL: The mannequin must be 100% invisible. No waistband stand, no leg forms, no clips. Only the garment fabric is visible. ` +
+      `Pure white background #FFFFFF, zero gradients, zero shadows. ` +
+      `Bright diffuse studio lighting. Straight front-facing camera.`
+    );
+  }
+
+  return (
+    `Perform a professional 3D ${mannequin} TRUE GHOST mannequin e-commerce render of the garment in this photograph. ` +
+    extraction +
+    `MANNEQUIN: ${mannSpec} CRITICAL — ZERO VISIBLE MANNEQUIN OR DRESS FORM OF ANY COLOR: ` +
+    `The mannequin must be 100% invisible. Absolutely no visible neck post, neck cylinder, ` +
+    `torso outline, stand, base, plastic mannequin parts, fabric-covered dress form, tailor's bust, ` +
+    `dressmaker's mannequin, or any human-body-shaped object — including white/cream/beige fabric ` +
+    `forms that match the garment color. Only the garment is visible. ` +
+    `For strapless, sleeveless, off-shoulder, crop, backless, tube, bustier, or low-cut garments: ` +
+    `the area above the neckline, beside bare shoulders, or above any exposed body region MUST be ` +
+    `pure #FFFFFF background — identical to the empty space around the garment. NOT a fabric form, ` +
+    `NOT a translucent shape, NOT skin, NOT a shadow. Only the garment fabric itself is visible — ` +
+    `everything else is empty pure white. ` +
+    `CRITICAL COLOR RULE: Before rendering, carefully analyze and identify the exact color of the garment ` +
+    `in the original photograph — note its precise hue, saturation, lightness, and any texture or pattern. ` +
+    `Reproduce that exact color with 100% fidelity in the render. Do NOT lighten, whiten, gray out, or shift ` +
+    `the color in any way. Account for any color cast from the original photo's lighting — render the TRUE ` +
+    `garment color under neutral studio light. ` +
+    `Place the garment on a strictly 100% PURE FLAT SOLID WHITE (#FFFFFF) background — exact RGB (255,255,255), ` +
+    `zero gradients, zero shadows, zero vignette — so the background can be removed to full transparency after rendering. ` +
+    `Render under bright, diffuse, high-exposure commercial studio front lighting that preserves true color without darkening. ` +
+    `Soft natural folds only — no heavy shadows that mute or shift the garment color.`
+  );
+}
+
 function blobToBase64(blob) {
   return new Promise((res, rej) => {
     const rd = new FileReader();
@@ -1919,6 +2066,46 @@ async function renderRow(row) {
   const rawBase64 = await fileToBase64(row.rawFileHandle);
   const rawMime   = getMimeType(row.rawFile || '');
   const cacheKey  = (row.rawFile || row.style).toLowerCase();
+
+  // ── v1.7 Archive Mode: single-pass render-as-is ─────────────────
+  // No manifest, no chip, no Pass 2, no color lock. Extract garment
+  // from (possibly on-model) photo and render exactly as photographed.
+  if (row.archive) {
+    // Auto-detect garment + body type (v1.7) — once per row, cached for re-renders
+    if (!row._classified) {
+      row._stepLabel = 'Auto-detecting garment…'; renderTable();
+      const cls = await classifyGarmentImage(row.rawFileHandle);
+      if (cls) {
+        row.garmentType = cls.garment;
+        row.bodyType    = cls.body;
+      } else {
+        row.rowNote = 'AUTO-DETECT FAILED — using defaults';
+      }
+      row._classified = true;
+      renderTable();
+    }
+    const aMannequin = (row.bodyType    || 'unisex').toLowerCase();
+    const aGarment   = (row.garmentType || 'top').toLowerCase();
+
+    row._stepLabel = 'Extracting garment — render as-is…'; renderTable();
+    const archPrompt = buildArchiveExtractionPrompt(row, aMannequin, aGarment);
+    const { base64: aB64, mimeType: aMime } = await callGemini(archPrompt, rawBase64, rawMime, { mannequin: aMannequin, garmentType: aGarment });
+
+    row._stepLabel = 'Removing background…'; renderTable();
+    const aBlob = await removeBg(aB64, aMime);
+
+    row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
+    const aFinal = await resizeToStandard(aBlob);
+
+    const aName = buildOutputFilename(row);
+    await saveOutput(state.folders.output, aName, aFinal || aBlob);
+
+    row.status       = 'done';
+    row.outFile      = aName;
+    row.outObjectURL = URL.createObjectURL(aFinal || aBlob);
+    row._stepLabel   = null;
+    return;
+  }
 
   // ── Pass 1: get or create base render ──────────────────────────
   // Base render locks in garment structure (shape, collar, seams, proportions).
@@ -1998,10 +2185,14 @@ async function renderRowWithRetry(row) {
 ════════════════════════════════════════════════════════════════ */
 document.addEventListener('DOMContentLoaded', () => {
   loadKeys();
+  // v1.7 — restore last-used mode (manifest | archive)
+  const savedMode = localStorage.getItem('svs_mode') || 'manifest';
+  if (savedMode === 'archive') setMode('archive');
   // Ready for real inputs — click Demo in the setup bar to preview UI
 });
 
 function loadDemoData() {
+  if (state.archiveMode) setMode('manifest'); // demo data is manifest-shaped
   cleanupObjectURLs();
   state.rows = DEMO_ROWS.map((r, i) => ({ ...r, idx: i }));
   state.inputs = { excel: true, raw: true, chip: true, output: true };
@@ -2102,6 +2293,13 @@ async function pickFolder(type) {
       showToast(`Output folder: ${dh.name}`);
     }
 
+    // v1.7 Archive Mode: Originals folder IS the worklist — no Excel, no chips
+    if (state.archiveMode && type === 'raw') {
+      await buildArchiveRows();
+      syncProcessBtn();
+      return;
+    }
+
     syncProcessBtn();
     maybeAutoMatch();
   } catch (err) {
@@ -2125,6 +2323,7 @@ async function buildFileIndex(dirHandle) {
 // Trigger matching as soon as Excel + both input folders are ready
 // Output folder is only required for Phase 3 rendering
 function maybeAutoMatch() {
+  if (state.archiveMode) return; // v1.7 — no matching/sampling in Archive Mode
   if (state.inputs.excel && state.inputs.raw && state.inputs.chip) {
     runMatchAndSample();
   }
@@ -2386,9 +2585,24 @@ function updateInputSlot(type, name) {
 }
 
 function syncProcessBtn() {
+  const btn = document.getElementById('btn-process');
+
+  // v1.7 Archive Mode: only Originals + Output are required
+  if (state.archiveMode) {
+    const ready = state.inputs.raw && state.inputs.output;
+    btn.disabled = !ready || state.batchRunning || !state.rows.length;
+    const queued = state.rows.filter(r => ['matched'].includes(r.status)).length;
+    if (!state.inputs.raw)         setBatchStatus('Archive Mode — select Originals folder');
+    else if (!state.inputs.output) setBatchStatus(queued > 0
+      ? `${queued} images queued — select Output folder to render`
+      : 'Select Output folder to enable Process All');
+    else if (!state.batchRunning)  setBatchStatus(queued > 0
+      ? `${queued} images ready — render as-is` : 'No images queued');
+    return;
+  }
+
   const allReady    = Object.values(state.inputs).every(Boolean);
   const matchReady  = state.inputs.excel && state.inputs.raw && state.inputs.chip;
-  const btn = document.getElementById('btn-process');
   btn.disabled = !allReady || state.batchRunning;
 
   if (!matchReady) {
@@ -2464,7 +2678,9 @@ function buildRow(r) {
 
   // ── Chip thumbnail ───────────────────────────────────────────
   let chipThumb;
-  if (r.chipObjectURL) {
+  if (r.archive) {
+    chipThumb = `<span style="font-size:9px;font-weight:600;color:var(--ink-3);border:1px solid var(--line);border-radius:3px;padding:2px 6px;letter-spacing:.04em">AS-IS</span>`;
+  } else if (r.chipObjectURL) {
     chipThumb = `<img class="thumb-img" src="${r.chipObjectURL}" alt="${r.chipFile}" style="object-fit:cover">
                  ${r.sampledHex
                    ? `<div class="thumb-swatch" style="background:${r.sampledHex};width:16px;height:36px;border-radius:3px;border:1px solid rgba(0,0,0,.1);flex-shrink:0" title="${r.sampledHex.toUpperCase()}"></div>`
@@ -2507,21 +2723,34 @@ function buildRow(r) {
          </div>`
       : skipDetail
         ? `<div style="font-size:9px;color:var(--done);margin-top:2px;opacity:.7">${skipDetail}</div>`
-        : r.status === 'rendering' && r._stepLabel
+        : (r.archive && r.rowNote && r.status === 'done')
+          ? `<div style="font-size:9px;color:var(--warn);margin-top:2px">${r.rowNote}</div>`
+          : r.status === 'rendering' && r._stepLabel
           ? `<div style="font-size:9px;color:var(--rendering);margin-top:2px;font-family:var(--font-mono)">${r._stepLabel}</div>`
           : ''}`;
 
   // ── Body Type + Garment Type cells ───────────────────────────
   const globalMq = localStorage.getItem('svs_mannequin') || 'unisex';
   const globalGt = localStorage.getItem('svs_garment')   || 'top';
-  const mq = r.bodyType    || globalMq;
-  const gt = r.garmentType || globalGt;
-  const mqLabel = mq.charAt(0).toUpperCase() + mq.slice(1);
-  const gtLabel = gt.charAt(0).toUpperCase() + gt.slice(1);
-  const isFromExcel = r.bodyType || r.garmentType;
 
-  const typeCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${isFromExcel?'var(--ink)':'var(--ink-3)'}">${mqLabel}</span>`;
-  const garmentCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${r.garmentType?'var(--ink)':'var(--ink-3)'}">${gtLabel}</span>`;
+  let typeCell, garmentCell;
+  if (r.archive) {
+    // v1.7 — auto-detected per image at render time; "Auto" until then
+    typeCell = r.bodyType
+      ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--ink)">${r.bodyType.charAt(0).toUpperCase()+r.bodyType.slice(1)}</span>`
+      : `<span style="font-size:10px;color:var(--ink-3);font-style:italic">Auto</span>`;
+    garmentCell = r.garmentType
+      ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--ink)">${r.garmentType.charAt(0).toUpperCase()+r.garmentType.slice(1)}</span>`
+      : `<span style="font-size:10px;color:var(--ink-3);font-style:italic">Auto</span>`;
+  } else {
+    const mq = r.bodyType    || globalMq;
+    const gt = r.garmentType || globalGt;
+    const mqLabel = mq.charAt(0).toUpperCase() + mq.slice(1);
+    const gtLabel = gt.charAt(0).toUpperCase() + gt.slice(1);
+    const isFromExcel = r.bodyType || r.garmentType;
+    typeCell    = `<span style="font-family:var(--font-mono);font-size:10px;color:${isFromExcel?'var(--ink)':'var(--ink-3)'}">${mqLabel}</span>`;
+    garmentCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${r.garmentType?'var(--ink)':'var(--ink-3)'}">${gtLabel}</span>`;
+  }
   const outCell = r.outObjectURL
     ? `<img src="${r.outObjectURL}" style="width:28px;height:36px;object-fit:contain;border-radius:3px;background:#f0f0f0;border:1px solid rgba(0,0,0,.08)" alt="${r.outFile}">`
     : r.status === 'rendering'
@@ -2616,8 +2845,9 @@ async function startBatch() {
     return;
   }
 
-  // Count new base renders needed
-  const uniqueRaws = new Set(toRender.map(r => (r.rawFile||r.style).toLowerCase()));
+  // Count new base renders needed (Manifest Mode only — Archive is single-pass)
+  const nonArchive = toRender.filter(r => !r.archive);
+  const uniqueRaws = new Set(nonArchive.map(r => (r.rawFile||r.style).toLowerCase()));
   const newBases   = [...uniqueRaws].filter(k => !state.baseRenders.has(k)).length;
   const totalCalls = toRender.length + newBases;
 
@@ -2671,12 +2901,27 @@ function finishBatch() {
 }
 
 function buildOutputFilename(row) {
+  // v1.7 Archive Mode: name from the input file — manifest fields don't exist.
+  // "78MT404 On Figure (2).jpg" → "78MT404 On Figure (2) - GM.png"
+  // The " - GM" suffix marks ghost-mannequin renders and prevents collisions.
+  if (row.archive) {
+    const base = stripExt(row.rawFile || row.style || 'render')
+      .replace(/[\\/:*?"<>|]/g, '').trim();
+    return base + ' - GM.png';
+  }
   const parts = [row.style, row.colorName, row.colorCode, row.composition].filter(Boolean);
   return parts.join(' - ') + '.png';
 }
 
-/* Rematch button — re-runs matching without reloading Excel */
+/* Rematch button — re-runs matching without reloading Excel.
+   In Archive Mode: re-scans the Originals folder for new/changed files. */
 async function rematch() {
+  if (state.archiveMode) {
+    if (!state.inputs.raw) { showToast('Select Originals folder first', 'error'); return; }
+    state.rawFileIndex = await buildFileIndex(state.folders.raw);
+    await buildArchiveRows();
+    return;
+  }
   if (!state.inputs.excel || !state.inputs.raw || !state.inputs.chip) {
     showToast('Load Excel + Originals + Chip folders first', 'error'); return;
   }
@@ -2790,8 +3035,25 @@ function closeDrawer() {
 }
 
 function fakeOverride() { showToast('In Phase 3: click anywhere on the chip to pick a custom color'); }
-function fakeRerender() { showToast('Re-render: queued for Phase 3 pipeline'); }
-function fakeRetry()    { showToast('Retry: will re-queue row in Phase 4 batch'); }
+function fakeRerender() { rerenderActiveRow(); }
+function fakeRetry()    { rerenderActiveRow(); }
+
+// v1.7 — real per-row re-render. Overwrites any existing output file.
+// Archive Mode will see higher manual-retry rates (on-model extraction
+// is a harder generative task), so this needs to actually work.
+async function rerenderActiveRow() {
+  const r = state.rows[state.activeRowIdx];
+  if (!r) return;
+  if (state.batchRunning) { showToast('Batch running — pause before re-rendering a row', 'error'); return; }
+  if (!r.rawFileHandle)   { showToast('Row has no source image attached', 'error'); return; }
+  if (!state.folders.output) { showToast('Select Output folder first', 'error'); return; }
+  r._skipReason = null;
+  await renderRowWithRetry(r);
+  renderTable(); updateCounts();
+  if (state.activeRowIdx === r.idx) openDrawer(r.idx); // refresh drawer
+  showToast(r.status === 'done' ? `Re-rendered ${r.outFile}` : `Re-render failed: ${r.error}`,
+            r.status === 'done' ? 'success' : 'error');
+}
 function fakeOpen() {
   const r = state.rows[state.activeRowIdx];
   if (!r || !r.outObjectURL) return;
@@ -2826,6 +3088,91 @@ function setGarmentType(type) {
     const b = document.getElementById(`sb-gt-${t}`);
     if (b) b.classList.toggle('active', t === type);
   });
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v1.7 ARCHIVE MODE — backdate old seasons, render-as-is
+════════════════════════════════════════════════════════════════ */
+const IMAGE_EXTS = /\.(jpe?g|png|webp|bmp|tiff?)$/i;
+
+function setMode(mode) {
+  if (state.batchRunning) { showToast('Pause the batch before switching modes', 'error'); return; }
+  state.archiveMode = (mode === 'archive');
+  localStorage.setItem('svs_mode', mode);
+
+  // Toggle buttons
+  document.getElementById('sb-mode-manifest').classList.toggle('active', !state.archiveMode);
+  document.getElementById('sb-mode-archive') .classList.toggle('active',  state.archiveMode);
+
+  // Show/hide manifest-only inputs
+  document.getElementById('slot-excel').style.display = state.archiveMode ? 'none' : '';
+  document.getElementById('slot-chip') .style.display = state.archiveMode ? 'none' : '';
+
+  // v1.7 — Archive Mode auto-detects body/garment type per image: hide manual controls
+  ['grp-body-label','grp-body','grp-divider','grp-garment-label','grp-garment'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = state.archiveMode ? 'none' : '';
+  });
+
+  // Hint + empty-state copy
+  const hint = document.getElementById('type-hint');
+  if (hint) hint.textContent = state.archiveMode
+    ? 'Archive Mode — render exactly as-is. Body and garment type auto-detected per image.'
+    : 'Global defaults — overridden per row by Excel columns';
+  const desc = document.querySelector('#empty-state .empty-desc');
+  if (desc) desc.innerHTML = state.archiveMode
+    ? 'Select an Originals folder of old-season images (on-model OK) and an Output folder.<br>Every image is rendered as a ghost mannequin <strong>exactly as photographed</strong> — no manifest, no chips.<br>Garment and body type are <strong>auto-detected</strong> per image.'
+    : 'Load an Excel manifest, then select Originals and Color Chips folders.<br>File matching and chip sampling run automatically.<br><br>No real files? Click <strong>Demo</strong> in the toolbar to preview.';
+
+  // Rebuild worklist for the new mode
+  cleanupObjectURLs();
+  state.rows = [];
+  state.activeRowIdx = null;
+  if (state.archiveMode && state.inputs.raw) buildArchiveRows();
+  renderTable(); updateCounts(); syncProcessBtn();
+}
+
+// Best-effort style number from filename — display only, never blocking.
+// Matches patterns like 78MT404, 56MS373, 12AB1234.
+function extractStyleFromFilename(name) {
+  const m = stripExt(name).match(/\d{2}[A-Z]{1,3}\d{3,4}/i);
+  return m ? m[0].toUpperCase() : null;
+}
+
+// Scan the Originals folder index and create one render-as-is row per image.
+// Replaces Excel parsing + matching + sampling in Archive Mode.
+async function buildArchiveRows() {
+  cleanupObjectURLs();
+  const files = [...state.rawFileIndex.entries()]
+    .filter(([name]) => IMAGE_EXTS.test(name))
+    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+
+  state.rows = [];
+  let i = 0;
+  for (const [name, handle] of files) {
+    const row = {
+      idx: i++,
+      archive: true,
+      style: extractStyleFromFilename(name) || stripExt(name),
+      colorName: '', colorCode: '', composition: '',
+      bodyType: null, garmentType: null,
+      rawFile: name, rawFileHandle: handle,
+      chipFile: null, chipFileHandle: null,
+      chipMatchKeys: 'As-Is',
+      status: 'matched',
+      sampledHex: null, bgColor: '#888',
+      outFile: null, error: null, rowNote: null,
+    };
+    try {
+      const f = await handle.getFile();
+      row.rawObjectURL = URL.createObjectURL(f);
+    } catch (_) { /* thumbnail optional */ }
+    state.rows.push(row);
+  }
+
+  renderTable(); updateCounts(); syncProcessBtn();
+  if (files.length) showToast(`Archive Mode: ${files.length} image${files.length !== 1 ? 's' : ''} queued for as-is render`, 'success');
+  else              showToast('No image files found in that folder', 'error');
 }
 
 function loadKeys() {
