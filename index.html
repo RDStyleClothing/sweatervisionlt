@@ -766,7 +766,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.4</span>
+    <span class="version-badge">v1.5</span>
 
     <div class="header-spacer"></div>
 
@@ -1397,7 +1397,7 @@ async function callGemini(prompt, rawBase64, rawMime, options = {}) {
   if (!key) throw new Error('Gemini API key not set — open Settings');
 
   const bgRule =
-    `GHOST MANNEQUIN BACKGROUND: CRITICAL — The garment MUST float on a 100% PURE FLAT SOLID WHITE background, hex #FFFFFF. NOT off-white, NOT light gray, NOT cream. Exact RGB (255,255,255). ZERO shadows of any kind — no drop shadows, no floor shadows, no ambient occlusion, no vignette, no gradient. The background must be a single uniform flat #FFFFFF value so that automated background removal can extract the garment cleanly. Any deviation from pure white in the background will cause extraction failure.`;
+    `GHOST MANNEQUIN BACKGROUND: CRITICAL — The garment MUST float on a 100% PURE FLAT SOLID WHITE background, hex #FFFFFF. NOT off-white, NOT light gray, NOT cream. Exact RGB (255,255,255). ZERO shadows of any kind — no drop shadows, no floor shadows, no ambient occlusion, no vignette, no gradient. The background must be a single uniform flat #FFFFFF value so that automated background removal can extract the garment cleanly. Any deviation from pure white in the background will cause extraction failure. The background must NEVER be tinted with the garment color — keep it strictly pure white regardless of what color the garment is being changed to.`;
 
   const mannequinSpec =
     mannequin === 'male'   ? 'MALE — broad shoulders, straight chest, male torso proportions. Do not use female curves or silhouette.' :
@@ -1418,14 +1418,51 @@ async function callGemini(prompt, rawBase64, rawMime, options = {}) {
 `AI FASHION EDITOR: FOCUS: Only modify the "sweater".
 REQUEST: "${prompt}".
 
+═══════════════════════════════════════════════════════════════
+TOP PRIORITY — NON-NEGOTIABLE ABSOLUTE REQUIREMENTS:
+═══════════════════════════════════════════════════════════════
+► ZERO MANNEQUIN FORM OF ANY KIND OR COLOR: There must be NO
+  visible mannequin, dress form, tailor's bust, fabric-covered
+  torso, plastic neck post, dummy, dressmaker's form, or any
+  human-body-shaped object in the output — including white,
+  cream, beige, or fabric-textured ones that visually blend
+  with the garment color. The garment fabric is the ONLY thing
+  that should be visible. A fabric-covered bust form is NOT a
+  ghost mannequin — it is a visible mannequin and is forbidden.
+
+► EVERY NON-GARMENT PIXEL = PURE WHITE #FFFFFF (POSITIVE RULE):
+  For any strapless, sleeveless, off-shoulder, crop, backless,
+  tube, bustier, or low-cut garment, the area ABOVE the neckline,
+  BESIDE the bare shoulders, or above any exposed body region
+  must be 100% PURE WHITE BACKGROUND (#FFFFFF), exactly the same
+  flat white as the surrounding empty space. NOT a fabric-covered
+  form. NOT a flesh tone. NOT a translucent mannequin shape. NOT
+  a darker shadow region. Just empty pure white background pixels,
+  indistinguishable from the surrounding negative space.
+
+► FAILING ANY OF THE ABOVE = RENDER FAILURE regardless of how well
+  every other rule is satisfied.
+═══════════════════════════════════════════════════════════════
+
 CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
 1. ${bgRule}
-2. FORCE TRUE GHOST MANNEQUIN — ZERO VISIBLE MANNEQUIN PARTS: The garment MUST appear as if worn by a completely invisible ghost. CRITICAL — there must be absolutely ZERO visible mannequin components: no neck post, no neck stand, no gray/white plastic cylinder, no torso form outline, no shoulder supports, no base, no clips, no rods. The ONLY thing visible must be the garment fabric itself floating in 3D space. The neck opening must be wide, fully open, and hollow showing only the inside back collar fabric. The body must have natural 3D volume and chest depth from the invisible ghost form underneath — but the form itself is 100% invisible. If you are considering showing any part of a mannequin body, stand, or support — DO NOT. Render ONLY the garment.
+2. FORCE TRUE GHOST MANNEQUIN — ZERO VISIBLE MANNEQUIN PARTS: The garment MUST appear as if worn by a completely invisible ghost. CRITICAL — there must be absolutely ZERO visible mannequin components: no neck post, no neck stand, no gray/white plastic cylinder, no torso form outline, no shoulder supports, no base, no clips, no rods, no fabric-covered dressmaker's form, no tailor's bust, no dress form of any color. The ONLY thing visible must be the garment fabric itself floating in 3D space. The neck opening must be wide, fully open, and hollow showing only the inside back collar fabric. The body must have natural 3D volume and chest depth from the invisible ghost form underneath — but the form itself is 100% invisible. If you are considering showing any part of a mannequin body, stand, or support — DO NOT. Render ONLY the garment.
+
+FAILURE EXAMPLES TO AVOID (each is a render failure — DO NOT produce any of them):
+✗ A visible white, cream, or beige fabric-covered dress form / tailor's bust / dressmaker's mannequin rising above a strapless or sleeveless garment
+✗ A solid colored neck cylinder (gray, white, or otherwise) protruding from the collar opening
+✗ A visible plastic mannequin head, neck, or shoulders above any garment neckline
+✗ A faint wireframe, pencil-sketched, or line-drawn outline of a torso, shoulders, or neck
+✗ A semi-transparent, ghosted, or "see-through" human body shape behind or inside the garment
+✗ Fabric texture continuing UP from a strapless neckline as if a body or form is wearing the garment
+✗ A flesh-toned, skin-toned, or translucent shape filling the area above a strapless neckline
+
+EXPOSED-AREA RULE: For strapless, sleeveless, off-shoulder, crop, backless, tube, bustier, or low-cut garments, the area outside the garment's actual fabric (above neckline, beside bare shoulders, above any exposed body region) MUST be pure #FFFFFF background — identical to the empty space surrounding the garment. There is no mannequin, no form, no body, no skin, no shadow in that area. Just empty white background.
 3. FORCE PERFECT FRONT-FACING CAMERA ANGLE: The garment must ALWAYS be captured from a perfectly flat, straight, level, direct front-facing point of view, centered and perpendicular to the camera. Never render any three-quarter angle, profile, back view, skewed perspective, or rotated/tilted posture. Symmetrical alignment is mandatory.
 4. ABSOLUTELY NO HANGERS OR TAGS: Completely remove any hangers, hooks, wires, price tags, barcode tags, sizing tags, cords, background items, or apparel labels (internal or external). The garment must float cleanly on its own.
-5. NO SHADOWS AT ALL: There must be absolutely NO flooring, ambient shadows, drop shadows, or shadow halos under hemlines, cords, or collars. The background must be flat, pure, sterile solid white (#FFFFFF).
+5. NO SHADOWS AT ALL: There must be absolutely NO drop shadows under the hem, NO floor shadows, NO soft ambient occlusion at the base of the garment, NO gradient darkening around the silhouette, NO shadow halos under hemlines, cords, or collars. Every single pixel that is not part of the garment fabric itself must be flat, pure, sterile solid white (#FFFFFF).
 6. ${styleRule}
-7. NO MODEL OR HUMAN PARTS — ABSOLUTELY NO MANNEQUIN HEAD: No human faces, skin, arms, legs, models, or mannequin heads. The neck opening of the garment must show only the hollow interior fabric — there must be NO gray plastic neck post, NO mannequin head form, NO bust form visible above the collar.
+7. NO MODEL OR HUMAN PARTS — ABSOLUTELY NO MANNEQUIN HEAD: No human faces, skin, arms, legs, models, or mannequin heads anywhere in the image. The neck opening of the garment must show only the hollow interior fabric — NO gray plastic neck post, NO mannequin head form, NO bust form visible above the collar. For strapless/sleeveless/crop/backless/bustier garments: NO fabric dress form, NO tailor's mannequin, NO dressmaker's bust above the neckline — that area must be pure #FFFFFF background only.
 8. DIMENSIONS: Strictly align to a 3:4 portrait aspect ratio (1200px width, 1600px height). The garment must be beautifully centered with a comfortable 15% margin from all borders to prevent clipping.
 9. ABSOLUTE COLOR FIDELITY: If the request includes changing the color/recoloring (e.g., mentions changing color, paint, hex code, or Pantone), you MUST completely overrule and throw away the old, original base colors and undertones of the garment. Do not tint or blend the old color into the new one. Paint the entire garment's fabric cleanly, evenly, and precisely with the requested target hex or Pantone shade as a fresh new dye. Keep the fabric rendered under bright, diffuse, high-key commercial advertising studio lighting. Folds and shading must be extremely soft, subtle, and natural; under no circumstances allow heavy gray, black, or muddy shadows to darken or mute the garment's overall fabric color below the requested target swatch value. The main body/flat surface colors of the garment must match the user's requested swatch color perfectly.`
     }
@@ -1436,7 +1473,9 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
   // In that case we silently retry without it so the call can still succeed.
   const buildBody = (includeModalities) => JSON.stringify({
     contents: [{ parts }],  // array format required by current Gemini API
-    ...(includeModalities ? { generationConfig: { responseModalities: ['TEXT', 'IMAGE'] } } : {})
+    // responseModalities order: IMAGE first per spec (TEXT,IMAGE order is rejected by some endpoints)
+    // imageConfig.aspectRatio is the ONLY thing that actually enforces 3:4 — Gemini ignores prose aspect ratio
+    ...(includeModalities ? { generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: '3:4' } } } : {})
   });
 
   // Try v1 first (current image models use v1), v1beta as fallback
@@ -1606,7 +1645,208 @@ function removeBg(base64, mimeType) {
   });
 }
 
-// ── "Render As Is" prompt — v5.4 exact copy ───────────────────────
+// ── LAB color lock — post-process mean-LAB shift to anchor rendered ──
+// color to the chip-sampled hex (colorLockTarget). Equivalent to v5.23
+// enforceEyedropColor. Corrects Gemini's tendency to lighten darks and
+// desaturate saturated colors. Only applied to Pass 2 (color renders).
+// ─────────────────────────────────────────────────────────────────────
+function _srgbLinear(c) {
+  c /= 255;
+  return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+}
+function _linearSrgb(c) {
+  c = Math.max(0, Math.min(1, c));
+  return Math.round((c <= 0.0031308 ? c * 12.92 : 1.055 * Math.pow(c, 1 / 2.4) - 0.055) * 255);
+}
+function _rgbToXyz(r, g, b) {
+  const rl = _srgbLinear(r), gl = _srgbLinear(g), bl = _srgbLinear(b);
+  return [
+    rl * 0.4124564 + gl * 0.3575761 + bl * 0.1804375,
+    rl * 0.2126729 + gl * 0.7151522 + bl * 0.0721750,
+    rl * 0.0193339 + gl * 0.1191920 + bl * 0.9503041,
+  ];
+}
+function _xyzToLab(x, y, z) {
+  const f = t => t > 0.008856 ? Math.cbrt(t) : (7.787 * t + 16 / 116);
+  const fx = f(x / 0.95047), fy = f(y), fz = f(z / 1.08883);
+  return [116 * fy - 16, 500 * (fx - fy), 200 * (fy - fz)];
+}
+function _labToXyz(L, a, b) {
+  const fy = (L + 16) / 116, fx = a / 500 + fy, fz = fy - b / 200;
+  const fi = t => t > 0.206897 ? t * t * t : (t - 16 / 116) / 7.787;
+  return [fi(fx) * 0.95047, fi(fy), fi(fz) * 1.08883];
+}
+function _xyzToRgb(x, y, z) {
+  const rl = x * 3.2404542 + y * (-1.5371385) + z * (-0.4985314);
+  const gl = x * (-0.9692660) + y * 1.8760108 + z * 0.0415560;
+  const bl = x * 0.0556434 + y * (-0.2040259) + z * 1.0572252;
+  return [_linearSrgb(rl), _linearSrgb(gl), _linearSrgb(bl)];
+}
+function _hexToLab(hex) {
+  const [r, g, b] = hexToRgb(hex);
+  return _xyzToLab(..._rgbToXyz(r, g, b));
+}
+
+function enforceEyedropColor(blob, targetHex) {
+  return new Promise(resolve => {
+    if (!blob || !targetHex) { resolve(blob); return; }
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      const W = cv.width = img.naturalWidth;
+      const H = cv.height = img.naturalHeight;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const id = ctx.getImageData(0, 0, W, H);
+      const d  = id.data;
+
+      // Compute mean LAB of all opaque garment pixels
+      let sumL = 0, sumA = 0, sumB = 0, n = 0;
+      for (let i = 0; i < W * H; i++) {
+        const pi = i * 4;
+        if (d[pi + 3] < 128) continue;
+        const [L, a, b] = _xyzToLab(..._rgbToXyz(d[pi], d[pi + 1], d[pi + 2]));
+        sumL += L; sumA += a; sumB += b; n++;
+      }
+      if (n === 0) { URL.revokeObjectURL(img.src); resolve(blob); return; }
+
+      const [tL, tA, tB] = _hexToLab(targetHex);
+      const dL = tL - sumL / n;
+      const dA = tA - sumA / n;
+      const dB = tB - sumB / n;
+
+      // Apply mean-LAB shift to every opaque pixel
+      for (let i = 0; i < W * H; i++) {
+        const pi = i * 4;
+        if (d[pi + 3] < 128) continue;
+        const [L, a, b] = _xyzToLab(..._rgbToXyz(d[pi], d[pi + 1], d[pi + 2]));
+        const [r2, g2, b2] = _xyzToRgb(..._labToXyz(
+          Math.max(0,   Math.min(100, L + dL)),
+          Math.max(-128, Math.min(127, a + dA)),
+          Math.max(-128, Math.min(127, b + dB))
+        ));
+        d[pi] = r2; d[pi + 1] = g2; d[pi + 2] = b2;
+      }
+
+      ctx.putImageData(id, 0, 0);
+      cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
+    };
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// ── Canvas resize to standard 1200×1600 (3:4) ────────────────────────
+// Gemini may return varying resolutions even with imageConfig.aspectRatio.
+// This ensures every output is exactly 1200×1600 with transparent bg.
+function resizeToStandard(blob) {
+  return new Promise(resolve => {
+    if (!blob) { resolve(blob); return; }
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      cv.width = 1200; cv.height = 1600;
+      const ctx = cv.getContext('2d');
+      // Transparent canvas — bg already removed
+      const scale = Math.min(1200 / img.naturalWidth, 1600 / img.naturalHeight);
+      const w = Math.round(img.naturalWidth  * scale);
+      const h = Math.round(img.naturalHeight * scale);
+      const x = Math.round((1200 - w) / 2);
+      const y = Math.round((1600 - h) / 2);
+      ctx.drawImage(img, x, y, w, h);
+      cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
+    };
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// ── Prior-alpha ceiling (v5.20) ───────────────────────────────────────
+// Prevents halos accumulating across the two-pass pipeline. After Pass 1
+// bg removal, the garment silhouette (dilated by DILATE_PX) is the ceiling
+// for Pass 2 bg removal: no pixel outside the original boundary can survive.
+// Skipped for silhouette-changing presets — Lite has none, so always applies.
+const SILHOUETTE_DILATE_PX = 10;
+
+function extractSilhouette(blob) {
+  return new Promise(resolve => {
+    if (!blob) { resolve(null); return; }
+    const img = new Image();
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, W, H).data;
+
+      // Binary mask of opaque pixels
+      const mask = new Uint8Array(W * H);
+      for (let i = 0; i < W * H; i++) if (d[i * 4 + 3] > 64) mask[i] = 1;
+
+      // Two-pass separable dilation (fast — O(W*H*dilate) not O(W*H*dilate²))
+      const D = SILHOUETTE_DILATE_PX;
+      const row_d = new Uint8Array(W * H);
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const x0 = Math.max(0, x - D), x1 = Math.min(W - 1, x + D);
+          for (let dx = x0; dx <= x1; dx++) {
+            if (mask[y * W + dx]) { row_d[y * W + x] = 1; break; }
+          }
+        }
+      }
+      const dilated = new Uint8Array(W * H);
+      for (let x = 0; x < W; x++) {
+        for (let y = 0; y < H; y++) {
+          const y0 = Math.max(0, y - D), y1 = Math.min(H - 1, y + D);
+          for (let dy = y0; dy <= y1; dy++) {
+            if (row_d[dy * W + x]) { dilated[y * W + x] = 1; break; }
+          }
+        }
+      }
+      URL.revokeObjectURL(img.src);
+      resolve({ mask: dilated, W, H });
+    };
+    img.onerror = () => resolve(null);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+function applyAlphaCeiling(blob, silhouette) {
+  // Apply the prior-silhouette ceiling: any pixel that was outside the
+  // dilated Pass-1 boundary is forced fully transparent in the result.
+  return new Promise(resolve => {
+    if (!blob || !silhouette) { resolve(blob); return; }
+    const img = new Image();
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const id = ctx.getImageData(0, 0, W, H);
+      const d  = id.data;
+
+      // Scale ceiling mask to match current image dimensions
+      const sW = silhouette.W, sH = silhouette.H;
+      for (let y = 0; y < H; y++) {
+        for (let x = 0; x < W; x++) {
+          const sx = Math.round(x * (sW - 1) / Math.max(W - 1, 1));
+          const sy = Math.round(y * (sH - 1) / Math.max(H - 1, 1));
+          if (!silhouette.mask[sy * sW + sx]) {
+            d[(y * W + x) * 4 + 3] = 0; // outside ceiling → transparent
+          }
+        }
+      }
+
+      ctx.putImageData(id, 0, 0);
+      cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
+    };
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
 // Used for Pass 1 (base render). Preserves original color exactly.
 // The base render locks in garment structure for all colorway variants.
 function buildRenderAsIsPrompt(row, mannequin, garmentType) {
@@ -1634,8 +1874,16 @@ function buildRenderAsIsPrompt(row, mannequin, garmentType) {
 
   return (
     `Perform a professional 3D ${mannequin} TRUE GHOST mannequin e-commerce render of this sweater. ` +
-    `MANNEQUIN: ${mannSpec} CRITICAL: The mannequin must be 100% invisible — absolutely no visible neck post, ` +
-    `neck cylinder, torso outline, stand, base, or any mannequin component. Only the garment is visible. ` +
+    `MANNEQUIN: ${mannSpec} CRITICAL — ZERO VISIBLE MANNEQUIN OR DRESS FORM OF ANY COLOR: ` +
+    `The mannequin must be 100% invisible. Absolutely no visible neck post, neck cylinder, ` +
+    `torso outline, stand, base, plastic mannequin parts, fabric-covered dress form, tailor's bust, ` +
+    `dressmaker's mannequin, or any human-body-shaped object — including white/cream/beige fabric ` +
+    `forms that match the garment color. Only the garment is visible. ` +
+    `For strapless, sleeveless, off-shoulder, crop, backless, tube, bustier, or low-cut garments: ` +
+    `the area above the neckline, beside bare shoulders, or above any exposed body region MUST be ` +
+    `pure #FFFFFF background — identical to the empty space around the garment. NOT a fabric form, ` +
+    `NOT a translucent shape, NOT skin, NOT a shadow. Only the garment fabric itself is visible — ` +
+    `everything else is empty pure white. ` +
     `CRITICAL COLOR RULE: Before rendering, carefully analyze and identify the exact color of the garment ` +
     `in the original image — note its precise hue, saturation, lightness, and any texture or pattern. ` +
     `Reproduce that exact color with 100% fidelity in the render. Do NOT lighten, whiten, gray out, or shift ` +
@@ -1644,8 +1892,8 @@ function buildRenderAsIsPrompt(row, mannequin, garmentType) {
     `${fabricLine} ` +
     `Maintain all original design details, seams, stitching, and construction exactly as shown. ` +
     `Place the garment on a strictly 100% PURE FLAT SOLID WHITE (#FFFFFF) background — exact RGB (255,255,255), ` +
-    `zero gradients, zero shadows, zero vignette. ` +
-    `Render under bright, diffuse, high-exposure commercial studio front lighting. ` +
+    `zero gradients, zero shadows, zero vignette — so the background can be removed to full transparency after rendering. ` +
+    `Render under bright, diffuse, high-exposure commercial studio front lighting that preserves true color without darkening. ` +
     `Soft natural folds only — no heavy shadows that mute or shift the garment color.`
   );
 }
@@ -1682,8 +1930,10 @@ async function renderRow(row) {
     const basePrompt = buildRenderAsIsPrompt(row, mannequin, garmentType);
     const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
     const baseBlob  = await removeBg(b64, bMime);
+    // Extract silhouette from Pass 1 for use as prior-alpha ceiling in Pass 2
+    const silhouette = await extractSilhouette(baseBlob);
     const baseB64   = baseBlob ? await blobToBase64(baseBlob) : b64;
-    base = { base64: baseB64, mimeType: 'image/png' };
+    base = { base64: baseB64, mimeType: 'image/png', silhouette };
     state.baseRenders.set(cacheKey, base);
   }
 
@@ -1699,26 +1949,42 @@ async function renderRow(row) {
   const { base64, mimeType } = await callGemini(colorPrompt, base.base64, base.mimeType, { mannequin, garmentType });
 
   row._stepLabel = 'Removing background…'; renderTable();
-  const pngBlob = await removeBg(base64, mimeType);
+  const rawBlob = await removeBg(base64, mimeType);
+
+  // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
+  row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
+  const ceiledBlob = await applyAlphaCeiling(rawBlob, base.silhouette);
+
+  // LAB color lock — anchor rendered color to chip-sampled hex
+  row._stepLabel = 'Locking color to chip…'; renderTable();
+  const lockedBlob = row.sampledHex
+    ? await enforceEyedropColor(ceiledBlob || rawBlob, row.sampledHex)
+    : (ceiledBlob || rawBlob);
+
+  // Resize to standard 1200×1600 (3:4) output
+  row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
+  const finalBlob = await resizeToStandard(lockedBlob);
 
   const filename = buildOutputFilename(row);
-  await saveOutput(state.folders.output, filename, pngBlob);
+  await saveOutput(state.folders.output, filename, finalBlob || lockedBlob);
 
   row.status       = 'done';
   row.outFile      = filename;
-  row.outObjectURL = URL.createObjectURL(pngBlob);
+  row.outObjectURL = URL.createObjectURL(finalBlob || lockedBlob);
   row._stepLabel   = null;
 }
 
 async function renderRowWithRetry(row) {
-  for (let attempt = 1; attempt <= 2; attempt++) {
+  const RETRY_DELAYS = [2000, 4000, 8000]; // exponential back-off, 3 attempts per spec
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       await renderRow(row);
       return;
     } catch (err) {
-      if (attempt < 2 && err.message.startsWith('429')) {
-        row._stepLabel = 'Rate limited — retrying in 4 s…'; renderTable();
-        await new Promise(r => setTimeout(r, 4000));
+      if (attempt < 3 && err.message.startsWith('429')) {
+        const delay = RETRY_DELAYS[attempt - 1];
+        row._stepLabel = `Rate limited — retrying in ${delay / 1000} s… (attempt ${attempt}/3)`; renderTable();
+        await new Promise(r => setTimeout(r, delay));
       } else {
         row.status = 'error'; row.error = err.message; row._stepLabel = null;
         return;
