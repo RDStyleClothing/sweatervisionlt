@@ -278,6 +278,48 @@ html, body {
 }
 .filter-chip:not(.active) .count { background: rgba(0,0,0,.06); color: var(--ink-3); }
 
+/* ─── Re-run bar (v1.10) — contextual bulk re-render for Review/Errors ───── */
+.rerun-bar {
+  display: none;
+  align-items: center; gap: 12px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12px;
+  flex-shrink: 0;
+}
+.rerun-bar.show { display: flex; }
+.rerun-bar.tone-review { background: rgba(8,145,178,.07); }
+.rerun-bar.tone-error  { background: rgba(220,38,38,.06); }
+.rerun-bar .rb-msg { color: var(--ink-2); }
+.rerun-bar .rb-msg strong { color: var(--ink); font-weight: 600; }
+.rerun-bar .rb-note { color: var(--ink-3); font-size: 11px; }
+.rerun-bar .rb-spacer { flex: 1; }
+.btn-rerun {
+  height: 30px; padding: 0 14px;
+  border: none; border-radius: var(--r);
+  font-size: 12px; font-weight: 600; color: #fff;
+  cursor: pointer; display: inline-flex; align-items: center; gap: 7px;
+  transition: opacity .15s;
+}
+.btn-rerun:hover { opacity: .9; }
+.btn-rerun:disabled { opacity: .45; cursor: not-allowed; }
+.btn-rerun.tone-review { background: var(--review); }
+.btn-rerun.tone-error  { background: var(--error); }
+/* v1.12 — "Re-run selected" secondary (outlined) button + select-all + row picker */
+.btn-rerun.ghost { background: transparent; color: var(--ink-2); border: 1px solid var(--line); }
+.btn-rerun.ghost:hover:not(:disabled) { border-color: var(--ink-2); opacity: 1; }
+.btn-rerun.ghost.tone-review { color: var(--review); border-color: var(--review); }
+.btn-rerun.ghost.tone-error  { color: var(--error);  border-color: var(--error); }
+.rerun-bar .rb-selall {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; color: var(--ink-2); cursor: pointer; user-select: none;
+}
+.rerun-bar .rb-selall input { cursor: pointer; }
+.row-pick {
+  cursor: pointer; margin-right: 6px; vertical-align: middle;
+  width: 14px; height: 14px;
+}
+
 /* ─── Worklist ───────────────────────────────────────────────────────────── */
 #worklist-wrap {
   overflow-y: auto;
@@ -510,6 +552,17 @@ html, body {
   color: var(--ink-3);
   margin-bottom: 8px;
 }
+/* v1.12 — per-row edit instruction field in the drawer */
+.drawer-edit {
+  width: 100%; box-sizing: border-box;
+  min-height: 64px; resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--line); border-radius: var(--r);
+  background: var(--card); color: var(--ink);
+  font-family: var(--font-ui); font-size: 12px; line-height: 1.45;
+}
+.drawer-edit:focus { outline: none; border-color: var(--review); }
+.drawer-edit-hint { font-size: 10px; color: var(--ink-3); margin-top: 6px; line-height: 1.4; }
 
 /* Preview areas */
 .preview-raw {
@@ -768,7 +821,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.9</span>
+    <span class="version-badge">v1.12</span>
 
     <div class="header-spacer"></div>
 
@@ -906,6 +959,25 @@ html, body {
     <div class="progress-bar" id="progress-bar" style="width:0%"></div>
   </div>
 
+  <!-- Contextual bulk re-run bar (v1.10; per-row select added v1.12) — appears when viewing Review or Errors -->
+  <div class="rerun-bar" id="rerun-bar">
+    <span class="rb-msg" id="rerun-msg"></span>
+    <span class="rb-note" id="rerun-note"></span>
+    <span class="rb-spacer"></span>
+    <label class="rb-selall" id="rerun-selall-wrap">
+      <input type="checkbox" id="rerun-selall" onchange="toggleSelectAll(this.checked)">
+      Select all
+    </label>
+    <button class="btn-rerun ghost" id="btn-rerun-sel" onclick="rerunSelected()" disabled>
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1.5 7A5.5 5.5 0 0111 2.9M12.5 7A5.5 5.5 0 013 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 1.5l1 1.4-1.5.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="btn-rerun-sel-label">Re-run selected (0)</span>
+    </button>
+    <button class="btn-rerun" id="btn-rerun" onclick="rerunCurrentBucket()">
+      <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1.5 7A5.5 5.5 0 0111 2.9M12.5 7A5.5 5.5 0 013 11.1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M10 1.5l1 1.4-1.5.7" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      <span id="btn-rerun-label">Re-run</span>
+    </button>
+  </div>
+
   <!-- ─── WORKLIST ──────────────────────────────────────────────────────── -->
   <div id="worklist-wrap">
     <div class="empty-state" id="empty-state">
@@ -1001,6 +1073,15 @@ html, body {
         <span class="done-badge">Done</span>
       </div>
       <div style="font-size:10px;color:var(--ink-3);margin-top:6px;font-family:var(--font-mono)" id="d-out-filename">—</div>
+    </div>
+
+    <!-- v1.12 — per-row edit instruction for re-render -->
+    <div id="d-edit-section" style="display:none">
+      <div class="drawer-section-title">Edit instructions for re-render</div>
+      <textarea id="d-edit" class="drawer-edit" rows="3"
+        placeholder="Describe what to fix, e.g. &quot;neck opening collapsed — open it up and round the shoulders&quot; or &quot;left sleeve is missing — rebuild it&quot;."
+        oninput="onEditInput(this.value)"></textarea>
+      <div class="drawer-edit-hint">Sent to the renderer as the top-priority correction when this row is re-rendered (single or as part of a selected/all re-run). Leave blank for a normal re-render.</div>
     </div>
 
   </div>
@@ -1988,6 +2069,19 @@ async function classifyGarmentImage(fileHandle) {
   }
 }
 
+// ── v1.12 Per-row user edit correction ────────────────────────────
+// When the operator types an edit instruction in the drawer (row._userEdit),
+// this returns a leading, top-priority corrective that is prepended to the
+// render prompt on EVERY attempt (first pass + QA retries, Archive + Manifest
+// Pass 2). Empty string when no edit is set, so default behavior is unchanged.
+function userEditCorrective(row) {
+  const t = ((row && row._userEdit) || '').trim();
+  if (!t) return '';
+  return 'TOP-PRIORITY OPERATOR CORRECTION — a human reviewed the previous render and requires this specific fix. ' +
+         'Apply it exactly, prioritizing it above all other instructions while still obeying every rule that follows: "' +
+         t.replace(/"/g, "'") + '". ';
+}
+
 // ── v1.7 Archive Mode prompt ──────────────────────────────────────
 // Used for backdated seasons where most inputs are ON-MODEL photographs.
 // Single pass: extract the garment from the worn photo and render it as a
@@ -2001,18 +2095,34 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
     mannequin === 'female' ? 'Female torso proportions — narrower shoulders, curved chest.' :
                              'Unisex neutral torso.';
 
+  const garmentNoun = isBottom ? 'bottom garment' : 'top garment';
   const extraction =
-    `INPUT: The photograph may show this garment WORN BY A HUMAN MODEL, on a hanger, or laid flat. ` +
-    `If a person is present, REMOVE THE PERSON ENTIRELY — no skin, hair, hands, face, jewelry, or any ` +
-    `other garments they are wearing. Isolate ONLY the ${isBottom ? 'bottom garment' : 'top garment'}. ` +
-    `RECONSTRUCTION: Rebuild any areas of the garment hidden by the model's body, arms, hair, or pose ` +
-    `(interior back collar, occluded sleeves, hem, side seams) so they are consistent with the visible ` +
-    `construction, knit gauge, and drape. Straighten the garment into a natural front-facing ` +
-    `ghost mannequin presentation. ` +
-    `ABSOLUTE AS-IS RULE: Do NOT redesign, restyle, modernize, simplify, or alter the garment in ANY way. ` +
-    `Preserve the exact color, pattern, stripes, colorblocking, knit texture, stitch detail, trim, buttons, ` +
-    `zippers, logos, neckline shape, sleeve length, and proportions EXACTLY as photographed. ` +
-    `No color shift, no added details, no removed details. `;
+    `INPUT TYPE — the source image may be ANY of these, and you must handle each: ` +
+    `(A) WORN ON A HUMAN MODEL, (B) on a hanger / laid FLAT as a packshot, or ` +
+    `(C) a TECHNICAL SKETCH, CAD flat, fashion illustration, or line drawing. ` +
+    `REGARDLESS OF INPUT TYPE, the OUTPUT must always be the same: a photorealistic 3D ` +
+    `TRUE GHOST MANNEQUIN e-commerce render of this ${garmentNoun}, presented on an ` +
+    `invisible bust/torso with natural 3D volume — exactly like every other render in this set. ` +
+    `\n• If WORN: REMOVE THE PERSON ENTIRELY — no skin, hair, hands, face, jewelry, or any other ` +
+    `garments they wear. Isolate ONLY the ${garmentNoun} and rebuild any areas hidden by the ` +
+    `body, arms, hair, or pose (interior back collar, occluded sleeves, hem, side seams) ` +
+    `consistent with the visible construction, knit gauge, and drape. ` +
+    `\n• If FLAT / on a hanger: do NOT leave it flat. INFLATE it into a filled 3D form as if worn ` +
+    `on an invisible body — add realistic chest/torso volume, rounded shoulders, natural fabric ` +
+    `weight, soft folds, and an open hollow neckline. The result must look identical in volume and ` +
+    `posture to a ghost-mannequin render made from a worn photo. ` +
+    `\n• If a SKETCH / CAD flat / illustration: interpret it as the garment's design specification and ` +
+    `render a photorealistic FINISHED knitted/woven garment from it — the CLOSEST POSSIBLE MATCH to ` +
+    `the sketched silhouette, proportions, neckline, sleeve length, seams, trim, colourblocking, and ` +
+    `colours — built with full 3D ghost-mannequin volume. Do NOT output a drawing, a flat 2D shape, ` +
+    `or any sketch/line-art look; output a realistic photographed garment. ` +
+    `\nIn ALL cases: straighten to a natural, symmetrical, front-facing ghost-mannequin presentation. ` +
+    `ABSOLUTE AS-IS RULE: Do NOT redesign, restyle, modernize, simplify, or invent details. ` +
+    `Preserve the exact colour, pattern, stripes, colourblocking, knit texture, stitch detail, trim, ` +
+    `buttons, zippers, logos, neckline shape, sleeve length, and proportions shown in the source. ` +
+    `Converting a flat lay or sketch into a 3D photorealistic ghost render is REQUIRED and is NOT ` +
+    `considered restyling — only the presentation changes, never the design. ` +
+    `No colour shift, no added details, no removed details. `;
 
   if (isBottom) {
     return (
@@ -2111,6 +2221,99 @@ function despeckleAlpha(blob, keepFrac = 0.08) {
       cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
     };
     img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// ── v1.11 Border-artifact trim ────────────────────────────────────
+// A correct ghost-mannequin render floats CENTERED and never touches the
+// frame edge. So any opaque connected component that touches the image
+// border — and is not the single largest component (the garment) — is a
+// background artifact: a dark/gray shaded smudge, a vignette corner, or a
+// leftover fragment that removeBg's brightest-edge keying could not strip
+// (it keys to white, so DARK background regions survive). We erase every
+// such border-touching, non-largest blob regardless of its colour or size.
+// This is what catches the dark corner blobs that despeckle (size-only)
+// and removeBg (white-only) both miss.
+function trimBorderArtifacts(blob) {
+  return new Promise(resolve => {
+    if (!blob) { resolve(blob); return; }
+    const img = new Image();
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight, N = W * H;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const id = ctx.getImageData(0, 0, W, H);
+      const d  = id.data;
+
+      const ALPHA_THR = 24;
+      const label = new Int32Array(N).fill(-1);
+      const stack = new Int32Array(N);
+      const areas = [];
+      const touchesBorder = [];
+      let comp = 0;
+      for (let s = 0; s < N; s++) {
+        if (d[s * 4 + 3] <= ALPHA_THR || label[s] !== -1) continue;
+        let sp = 0; stack[sp++] = s; label[s] = comp; let area = 0; let border = false;
+        while (sp > 0) {
+          const p = stack[--sp]; area++;
+          const x = p % W, y = (p / W) | 0;
+          if (x === 0 || y === 0 || x === W - 1 || y === H - 1) border = true;
+          if (x > 0)     { const q = p - 1; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
+          if (x < W - 1) { const q = p + 1; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
+          if (y > 0)     { const q = p - W; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
+          if (y < H - 1) { const q = p + W; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
+        }
+        areas.push(area); touchesBorder.push(border); comp++;
+      }
+      if (comp <= 1) { URL.revokeObjectURL(img.src); resolve(blob); return; }
+
+      // Largest opaque component = the garment; always keep it even if it
+      // happens to graze an edge. Every OTHER border-touching blob is erased.
+      let maxIdx = 0, maxA = 0;
+      for (let i = 0; i < areas.length; i++) if (areas[i] > maxA) { maxA = areas[i]; maxIdx = i; }
+      let erased = false;
+      for (let p = 0; p < N; p++) {
+        const l = label[p];
+        if (l >= 0 && l !== maxIdx && touchesBorder[l]) { d[p * 4 + 3] = 0; erased = true; }
+      }
+      if (!erased) { URL.revokeObjectURL(img.src); resolve(blob); return; }
+      ctx.putImageData(id, 0, 0);
+      cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
+    };
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
+// ── v1.11 Render health check ─────────────────────────────────────
+// Returns the fraction of opaque pixels (alpha>32) in a finished blob.
+// Near-0 means the render came back empty / all-background (the "fully
+// black" failure where Gemini produced nothing usable); near-1 means
+// background removal found no white to strip (whole frame is opaque).
+// Both are degenerate and should be re-rendered rather than shipped.
+function renderCoverage(blob) {
+  return new Promise(resolve => {
+    if (!blob) { resolve(0); return; }
+    const img = new Image();
+    img.onload = () => {
+      const S = 160; // small sample canvas — coverage is a ratio, full res not needed
+      const scale = Math.min(1, S / Math.max(img.naturalWidth, img.naturalHeight));
+      const w = Math.max(1, Math.round(img.naturalWidth * scale));
+      const h = Math.max(1, Math.round(img.naturalHeight * scale));
+      const cv = document.createElement('canvas');
+      cv.width = w; cv.height = h;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0, w, h);
+      const d = ctx.getImageData(0, 0, w, h).data;
+      let opaque = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 32) opaque++;
+      URL.revokeObjectURL(img.src);
+      resolve(opaque / (w * h));
+    };
+    img.onerror = () => { URL.revokeObjectURL(img.src); resolve(0); };
     img.src = URL.createObjectURL(blob);
   });
 }
@@ -2319,9 +2522,9 @@ async function renderRow(row) {
         : 'Extracting garment — render as-is…';
       renderTable();
 
-      const archPrompt = (retrying && qa)
+      const archPrompt = userEditCorrective(row) + ((retrying && qa)
         ? buildArchiveRetryPrompt(row, aMannequin, aGarment, qa)
-        : buildArchiveExtractionPrompt(row, aMannequin, aGarment);
+        : buildArchiveExtractionPrompt(row, aMannequin, aGarment));
       const { base64: aB64, mimeType: aMime } =
         await callGemini(archPrompt, rawBase64, rawMime, { mannequin: aMannequin, garmentType: aGarment });
 
@@ -2329,10 +2532,24 @@ async function renderRow(row) {
       aBlob = await removeBg(aB64, aMime);
 
       row._stepLabel = 'Cleaning stray fragments…'; renderTable();
-      const cleaned = await despeckleAlpha(aBlob);
+      let cleaned = await despeckleAlpha(aBlob);
+      // v1.11 — erase dark/gray shaded background blobs that touch the frame
+      // edge (removeBg keys to white and leaves dark corners behind).
+      cleaned = await trimBorderArtifacts(cleaned || aBlob);
 
       row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
       aFinal = await resizeToStandard(cleaned || aBlob);
+
+      // v1.11 — degenerate-render guard: an empty/all-background frame (the
+      // "fully black" failure) or a frame that is almost entirely opaque
+      // (background never stripped) is not worth a QA call — force a retry.
+      const coverage = await renderCoverage(aFinal || cleaned || aBlob);
+      if (coverage < 0.02 || coverage > 0.97) {
+        qa = { pass: false, issues: ['background'],
+               reason: coverage < 0.02 ? 'empty render — nothing generated' : 'background not removed' };
+        if (attempt < ARCHIVE_QA_MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 1500)); continue; }
+        break;
+      }
 
       row._stepLabel = `Quality check ${attempt}/${ARCHIVE_QA_MAX_ATTEMPTS}…`; renderTable();
       qa = await qaCheckRender(aFinal || cleaned || aBlob, qaOriginalB64);
@@ -2371,7 +2588,10 @@ async function renderRow(row) {
     row._stepLabel = 'Pass 1 — base render…'; renderTable();
     const basePrompt = buildRenderAsIsPrompt(row, mannequin, garmentType);
     const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
-    const baseBlob  = await removeBg(b64, bMime);
+    const baseRaw   = await removeBg(b64, bMime);
+    // v1.11 — strip any dark/shaded border blob before deriving the silhouette
+    // ceiling, so Pass 2 isn't anchored to an artifact-inflated boundary.
+    const baseBlob  = await trimBorderArtifacts(baseRaw) || baseRaw;
     // Extract silhouette from Pass 1 for use as prior-alpha ceiling in Pass 2
     const silhouette = await extractSilhouette(baseBlob);
     const baseB64   = baseBlob ? await blobToBase64(baseBlob) : b64;
@@ -2385,7 +2605,8 @@ async function renderRow(row) {
   };
 
   row._stepLabel = 'Pass 2 — building color prompt…'; renderTable();
-  const colorPrompt = await buildGeminiPrompt(row, colorCtx);
+  // v1.12 — lead with the operator's per-row edit instruction (if any)
+  const colorPrompt = userEditCorrective(row) + (await buildGeminiPrompt(row, colorCtx));
 
   row._stepLabel = 'Pass 2 — rendering color…'; renderTable();
   const { base64, mimeType } = await callGemini(colorPrompt, base.base64, base.mimeType, { mannequin, garmentType });
@@ -2902,6 +3123,8 @@ function renderTable() {
   tbody.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => openDrawer(+tr.dataset.idx));
   });
+
+  updateRerunBar();   // v1.12 — keep bar + selection controls in sync
 }
 
 function buildRow(r) {
@@ -3019,8 +3242,16 @@ function buildRow(r) {
       ? `<span style="font-size:9px;color:var(--rendering);font-family:var(--font-mono);white-space:nowrap">${r._stepLabel||'…'}</span>`
       : `<span class="out-dash">—</span>`;
 
+  // v1.12 — selection checkbox shown only in Review/Errors view, only on
+  // re-runnable rows (review = always; error = only if a source image exists)
+  const inPickFilter = state.filter === 'review' || state.filter === 'error';
+  const isRetryable  = r.status === 'needs-review' || (r.status === 'error' && r.rawFileHandle);
+  const pickBox = (inPickFilter && isRetryable)
+    ? `<input type="checkbox" class="row-pick" ${r._selected ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRowSelect(${r.idx}, this.checked)" title="Select for re-run">`
+    : '';
+
   return `<tr class="${rowClass} ${activeClass}" data-idx="${r.idx}" data-status="${r.status}">
-    <td>${r.idx + 1}</td>
+    <td>${pickBox}${r.idx + 1}</td>
     <td><span class="cell-style">${r.style || '—'}</span></td>
     <td><span class="cell-color">${r.colorName || '<span style="color:var(--ink-3)">—</span>'}</span></td>
     <td><span class="cell-code">${r.colorCode || '<span style="color:var(--ink-3)">—</span>'}</span></td>
@@ -3043,6 +3274,7 @@ function setFilter(f) {
     el.classList.toggle('active', el.dataset.filter === f);
   });
   renderTable();
+  updateRerunBar();
 }
 
 function updateCounts() {
@@ -3052,6 +3284,186 @@ function updateCounts() {
   document.getElementById('cnt-done').textContent    = rows.filter(r=>r.status==='done').length;
   document.getElementById('cnt-review').textContent  = rows.filter(r=>r.status==='needs-review').length;
   document.getElementById('cnt-error').textContent   = rows.filter(r=>r.status==='error').length;
+  updateRerunBar();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   BULK RE-RUN — Review / Errors  (v1.10)
+   After a batch completes the user can enter the Review or Errors
+   filter and re-render every row in that bucket in one click, instead
+   of opening each row's drawer. Reuses the same retry/render pipeline
+   as Process All; honours pause via the Process All → Pause toggle.
+════════════════════════════════════════════════════════════════ */
+
+// Rows that re-rendering can actually fix. Review rows always qualify
+// (they rendered but failed QA). Error rows only qualify if a source
+// image is attached — match failures (missing raw/chip) won't be fixed
+// by a re-render and are reported separately so the user fixes inputs.
+function bucketRows(filter) {
+  if (filter === 'review') {
+    const all = state.rows.filter(r => r.status === 'needs-review');
+    return { retryable: all, blocked: [] };
+  }
+  if (filter === 'error') {
+    const all       = state.rows.filter(r => r.status === 'error');
+    const retryable = all.filter(r => r.rawFileHandle);
+    const blocked   = all.filter(r => !r.rawFileHandle);   // match failures
+    return { retryable, blocked };
+  }
+  return { retryable: [], blocked: [] };
+}
+
+function updateRerunBar() {
+  const bar   = document.getElementById('rerun-bar');
+  const msg   = document.getElementById('rerun-msg');
+  const note  = document.getElementById('rerun-note');
+  const btn   = document.getElementById('btn-rerun');
+  const label = document.getElementById('btn-rerun-label');
+  if (!bar) return;
+
+  const filter = state.filter;
+  if (filter !== 'review' && filter !== 'error') {
+    bar.classList.remove('show'); return;
+  }
+
+  const { retryable, blocked } = bucketRows(filter);
+  const totalInBucket = retryable.length + blocked.length;
+
+  // Nothing in this bucket → keep the bar hidden (filtered view is empty)
+  if (totalInBucket === 0) { bar.classList.remove('show'); return; }
+
+  const tone = filter === 'review' ? 'review' : 'error';
+  bar.className = 'rerun-bar show tone-' + tone;
+  btn.className = 'btn-rerun tone-' + tone;
+
+  const noun = filter === 'review' ? 'flagged for review' : 'failed';
+  msg.innerHTML = `<strong>${totalInBucket}</strong> row${totalInBucket !== 1 ? 's' : ''} ${noun}.`;
+
+  note.textContent = blocked.length
+    ? `${blocked.length} can't be re-rendered (missing source — fix matching).`
+    : '';
+
+  label.textContent = `Re-run ${retryable.length} ${filter === 'review' ? 'Review' : 'Error'}${retryable.length !== 1 ? 's' : ''}`;
+  btn.disabled = state.batchRunning || retryable.length === 0;
+
+  // v1.12 — selection controls (Select all + Re-run selected)
+  const selBtn   = document.getElementById('btn-rerun-sel');
+  const selLabel = document.getElementById('btn-rerun-sel-label');
+  const selAll   = document.getElementById('rerun-selall');
+  const selWrap  = document.getElementById('rerun-selall-wrap');
+  if (selBtn && selAll) {
+    const selected = retryable.filter(r => r._selected).length;
+    selBtn.className = 'btn-rerun ghost tone-' + tone;
+    selLabel.textContent = `Re-run selected (${selected})`;
+    selBtn.disabled = state.batchRunning || selected === 0;
+    // Select-all reflects the current bucket; indeterminate on a partial pick
+    const hasRows = retryable.length > 0;
+    selWrap.style.display = hasRows ? '' : 'none';
+    selAll.checked = hasRows && selected === retryable.length;
+    selAll.indeterminate = selected > 0 && selected < retryable.length;
+    selAll.disabled = state.batchRunning || !hasRows;
+  }
+}
+
+function rerunCurrentBucket() {
+  const filter = state.filter;
+  if (filter !== 'review' && filter !== 'error') return;
+  if (state.batchRunning) { showToast('Batch running — pause before re-running', 'error'); return; }
+  if (!state.folders.output) { showToast('Select Output folder before rendering', 'error'); return; }
+
+  const { retryable } = bucketRows(filter);
+  if (!retryable.length) { showToast('No re-runnable rows in this bucket', 'error'); return; }
+
+  const label = filter === 'review' ? 'review' : 'error';
+  runRerun(retryable, label);
+}
+
+// ── v1.12 Per-row selection + selected re-run ─────────────────────
+function toggleRowSelect(idx, checked) {
+  const r = state.rows.find(x => x.idx === idx);
+  if (r) r._selected = checked;
+  updateRerunBar();
+}
+
+function toggleSelectAll(checked) {
+  const { retryable } = bucketRows(state.filter);
+  retryable.forEach(r => { r._selected = checked; });
+  renderTable();        // rebuild row checkboxes to match
+  updateRerunBar();
+}
+
+function selectedRetryableRows() {
+  const { retryable } = bucketRows(state.filter);
+  return retryable.filter(r => r._selected);
+}
+
+function rerunSelected() {
+  const filter = state.filter;
+  if (filter !== 'review' && filter !== 'error') return;
+  if (state.batchRunning) { showToast('Batch running — pause before re-running', 'error'); return; }
+  if (!state.folders.output) { showToast('Select Output folder before rendering', 'error'); return; }
+
+  const rows = selectedRetryableRows();
+  if (!rows.length) { showToast('No rows selected', 'error'); return; }
+
+  runRerun(rows, filter === 'review' ? 'selected review' : 'selected error');
+}
+
+// Scoped batch over a fixed list of rows. Mirrors startBatch's progress +
+// Pause wiring so the Process All button doubles as Pause during a re-run.
+async function runRerun(rows, label) {
+  state.batchRunning   = true;
+  state.pauseRequested = false;
+
+  // Clear the idempotency skip-reason so these rows actually re-render even
+  // if a (passing) output file already exists.
+  rows.forEach(r => { r._skipReason = null; });
+
+  const procBtn = document.getElementById('btn-process');
+  procBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="3.5" height="9" rx="1" fill="currentColor"/><rect x="7" y="1.5" width="3.5" height="9" rx="1" fill="currentColor"/></svg> Pause';
+  procBtn.classList.add('running');
+  document.getElementById('btn-rerun').disabled = true;
+  const _selBtn = document.getElementById('btn-rerun-sel');
+  if (_selBtn) _selBtn.disabled = true;
+  document.getElementById('progress-bar').classList.remove('done');
+  document.getElementById('progress-bar').style.width = '0%';
+
+  let completed = 0;
+  for (let i = 0; i < rows.length; i++) {
+    if (state.pauseRequested) {
+      stopBatch();
+      setBatchStatus(`Re-run paused — ${completed} of ${rows.length} ${label} rows re-rendered`);
+      renderTable(); updateCounts();
+      return;
+    }
+    setBatchStatus(`Re-running ${label} row ${i + 1} of ${rows.length}…`);
+    await renderRowWithRetry(rows[i]);
+    completed++;
+    document.getElementById('progress-bar').style.width =
+      Math.round(((i + 1) / rows.length) * 100) + '%';
+    renderTable(); updateCounts();
+  }
+
+  // Tally outcomes for just this re-run set
+  const stillError  = rows.filter(r => r.status === 'error').length;
+  const stillReview = rows.filter(r => r.status === 'needs-review').length;
+  const nowDone     = rows.filter(r => r.status === 'done').length;
+
+  // v1.12 — drop selection on rows that passed; leave still-flagged rows
+  // checked so the operator can adjust the edit note and re-run again.
+  rows.forEach(r => { if (r.status === 'done') r._selected = false; });
+
+  state.batchRunning = false;
+  procBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><polygon points="3,1 13,7 3,13" fill="currentColor"/></svg> Process All';
+  procBtn.classList.remove('running');
+  document.getElementById('progress-bar').classList.add('done');
+
+  const summary = `Re-run done — ${nowDone} passed`
+    + (stillReview ? `, ${stillReview} still need review` : '')
+    + (stillError ? `, ${stillError} still failed` : '');
+  setBatchStatus(summary);
+  renderTable(); updateCounts();
+  showToast(summary, (stillError || stillReview) ? 'error' : 'success');
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -3289,6 +3701,14 @@ function openDrawer(idx) {
   // Buttons
   document.getElementById('btn-open-file').disabled = !r.outObjectURL;
 
+  // v1.12 — per-row edit instruction: show for any row with a source image
+  // (Archive rows always; Manifest rows once matched). Hidden for match
+  // failures, which a re-render can't fix.
+  const editSec = document.getElementById('d-edit-section');
+  const canRerender = !!r.rawFileHandle;
+  editSec.style.display = canRerender ? '' : 'none';
+  document.getElementById('d-edit').value = r._userEdit || '';
+
   // Open
   document.getElementById('drawer').classList.add('open');
   document.getElementById('drawer-overlay').classList.add('open');
@@ -3307,6 +3727,14 @@ function closeDrawer() {
 function fakeOverride() { showToast('In Phase 3: click anywhere on the chip to pick a custom color'); }
 function fakeRerender() { rerenderActiveRow(); }
 function fakeRetry()    { rerenderActiveRow(); }
+
+// v1.12 — store the per-row edit instruction live as the operator types.
+// Picked up by renderRow (via userEditCorrective) on the next re-render —
+// single (this drawer) or batch (selected / all).
+function onEditInput(val) {
+  const r = state.rows[state.activeRowIdx];
+  if (r) r._userEdit = val;
+}
 
 // v1.7 — real per-row re-render. Overwrites any existing output file.
 // Archive Mode will see higher manual-retry rates (on-model extraction
