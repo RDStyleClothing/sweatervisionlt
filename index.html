@@ -809,6 +809,49 @@ html, body {
   width: 0%;
 }
 .progress-bar.done { background: var(--done); }
+/* ─── v1.17 Image inspector: lightbox + hover preview ───────────────────── */
+.zoomable { cursor: zoom-in; }
+#svl-lightbox {
+  position: fixed; inset: 0; z-index: 4000;
+  display: none; align-items: center; justify-content: center;
+  background: rgba(15,15,18,.82); backdrop-filter: blur(3px);
+  cursor: zoom-out;
+}
+#svl-lightbox.open { display: flex; }
+#svl-lightbox .lb-frame {
+  max-width: 92vw; max-height: 88vh;
+  display: flex; flex-direction: column; gap: 8px; align-items: center;
+}
+#svl-lightbox img {
+  max-width: 92vw; max-height: 82vh; object-fit: contain;
+  border-radius: 8px; box-shadow: 0 18px 60px rgba(0,0,0,.5);
+  /* checkerboard so transparent renders can be inspected */
+  background:
+    linear-gradient(45deg, #d8d8d8 25%, transparent 25%, transparent 75%, #d8d8d8 75%),
+    linear-gradient(45deg, #d8d8d8 25%, #f4f4f4 25%, #f4f4f4 75%, #d8d8d8 75%);
+  background-size: 24px 24px; background-position: 0 0, 12px 12px;
+}
+#svl-lightbox .lb-cap {
+  font-family: var(--font-mono); font-size: 11px; letter-spacing: .05em;
+  color: #e8e8e8; background: rgba(0,0,0,.45);
+  padding: 4px 12px; border-radius: 20px; max-width: 90vw;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+#svl-lightbox .lb-hint { font-size: 10px; color: rgba(255,255,255,.55); }
+#svl-hoverprev {
+  position: fixed; z-index: 3900; display: none; pointer-events: none;
+  padding: 6px; border-radius: 8px;
+  background: #fff; border: 1px solid var(--line);
+  box-shadow: 0 10px 34px rgba(0,0,0,.22);
+}
+#svl-hoverprev img {
+  display: block; width: 340px; height: 425px; object-fit: contain;
+  background:
+    linear-gradient(45deg, #e2e2e2 25%, transparent 25%, transparent 75%, #e2e2e2 75%),
+    linear-gradient(45deg, #e2e2e2 25%, #fafafa 25%, #fafafa 75%, #e2e2e2 75%);
+  background-size: 18px 18px; background-position: 0 0, 9px 9px;
+  border-radius: 5px;
+}
 </style>
 </head>
 
@@ -821,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.16</span>
+    <span class="version-badge">v1.18</span>
 
     <div class="header-spacer"></div>
 
@@ -1404,7 +1447,7 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6';
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.16';   // v1.16 — RENDER_RULES v1.2 compliance: Rule 7b undergarment removal, Garment Identity Lock, 75% L-anchor LAB lock, perimeter diagnostic, QA undergarment vocab
+const SVL_VERSION = 'v1.18';   // v1.18 — per-row garment type from raw filename keywords (pant/jean/skirt → bottom; top/sweater/shirt/blouse → top); precedence Excel > filename > vision > global. v1.17 — §7.5 achromatic white-peel 2nd pass in all render chains; image inspector (hover preview + click lightbox) on original/chip/render thumbnails. v1.16 — RENDER_RULES v1.2 compliance.
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
 //   'block' — a failed preflight hard-stops the batch (default; "no exceptions")
@@ -1449,6 +1492,40 @@ const RESIDUAL_FORM_MODE = 'review';
 // the model isn't semantically anchored to knit texture on trousers/skirts.
 function targetNoun(garmentType) {
   return (garmentType || '').toLowerCase() === 'bottom' ? 'garment' : 'sweater';
+}
+
+// ── v1.18 Filename garment-type detection ─────────────────────────
+// The raw filename usually names the garment ("host-pant-in-black",
+// "the-long-sleeve-shirt"). Detect top vs bottom from keywords so each row
+// renders with the correct focus regardless of the global toggle.
+// Precedence: Excel "Garment Type" column > filename keyword > vision
+// classify (archive) > global setting. Conflict rule: the LAST keyword in
+// the name wins (the head noun — "denim-shirt" is a shirt, "jean-skirt"
+// is a skirt). Word-boundary matched so "pantone" never hits "pant".
+const GT_TOP_WORDS = ['top','sweater','shirt','sweatshirt','blouse','tee','tshirt',
+  'tank','cami','camisole','polo','hoodie','cardigan','pullover','jumper',
+  'turtleneck','crewneck','henley','tunic','vest','jacket','coat','blazer',
+  'knit','bodysuit','dress'];
+const GT_BOTTOM_WORDS = ['pant','jean','skirt','short','trouser','legging',
+  'jogger','culotte','chino','slack','capri','skort','bottom'];
+function detectGarmentTypeFromName(name) {
+  if (!name) return null;
+  const s = String(name).toLowerCase().replace(/\.[a-z0-9]+$/, '');
+  let bestIdx = -1, bestType = null;
+  const scan = (words, type) => {
+    for (const w of words) {
+      const re = new RegExp('(?:^|[^a-z])(' + w + ')s?(?:[^a-z]|$)', 'g');
+      let m;
+      while ((m = re.exec(s)) !== null) {
+        const idx = m.index + m[0].indexOf(m[1]);
+        if (idx > bestIdx) { bestIdx = idx; bestType = type; }
+        re.lastIndex = m.index + 1;   // allow overlapping scans
+      }
+    }
+  };
+  scan(GT_TOP_WORDS, 'top');
+  scan(GT_BOTTOM_WORDS, 'bottom');
+  return bestType;
 }
 
 function getMimeType(filename) {
@@ -2269,6 +2346,123 @@ const ARCHIVE_QA_MAX_ATTEMPTS = 3;
 // torn gray background fragments removeBg leaves when Gemini's background is
 // not flat #FFFFFF — the Archive-Mode analogue of Manifest's silhouette
 // ceiling (which Archive has no Pass-1 silhouette to build).
+// ── v1.17 Achromatic white peel (RENDER_RULES v1.2 §7.5 — 2nd pass) ──
+// Runs after removeBg on every render. Removes leftover white: edge-reachable
+// near-white components, large attached white blobs (residual torso panels),
+// and whitish fringe at the alpha boundary. Light/white garments are
+// auto-detected and get a conservative 2px rim-only peel so the garment
+// itself is never eaten (edge-reachable principle, §7.2).
+function achromaticPeel(blob) {
+  return new Promise(resolve => {
+    if (!blob) { resolve(blob); return; }
+    const img = new Image();
+    img.onload = () => {
+      const cv = document.createElement('canvas');
+      const W = cv.width = img.naturalWidth, H = cv.height = img.naturalHeight;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      const id = ctx.getImageData(0, 0, W, H), d = id.data, N = W * H;
+
+      const WHITE_MIN = 235, WHITE_SPREAD = 20, BIG = 1500;
+
+      // Classify: is the garment itself white/light? (median of solid pixels)
+      const mins = [], sprs = [];
+      for (let i = 0; i < N; i += 7) {           // sparse sample is plenty
+        const p = i * 4;
+        if (d[p + 3] > 200) {
+          const mn = Math.min(d[p], d[p+1], d[p+2]);
+          mins.push(mn); sprs.push(Math.max(d[p], d[p+1], d[p+2]) - mn);
+        }
+      }
+      if (!mins.length) { resolve(blob); return; }
+      mins.sort((a,b)=>a-b); sprs.sort((a,b)=>a-b);
+      const medMin = mins[mins.length >> 1], medSpr = sprs[sprs.length >> 1];
+      const lightGarment = medMin > 215 && medSpr < 25;
+
+      const alphaAt = i => d[i*4+3];
+      const minAt   = i => Math.min(d[i*4], d[i*4+1], d[i*4+2]);
+      const sprAt   = i => Math.max(d[i*4], d[i*4+1], d[i*4+2]) - minAt(i);
+
+      if (!lightGarment) {
+        // Label near-white components; kill those touching transparency or > BIG px
+        const white = new Uint8Array(N);
+        for (let i = 0; i < N; i++)
+          if (alphaAt(i) > 10 && minAt(i) > WHITE_MIN && sprAt(i) < WHITE_SPREAD) white[i] = 1;
+        const label = new Int32Array(N).fill(-1);
+        const stack = new Int32Array(N);
+        let comp = 0; const kill = [];
+        for (let s = 0; s < N; s++) {
+          if (!white[s] || label[s] !== -1) continue;
+          let sp = 0; stack[sp++] = s; label[s] = comp;
+          let area = 0, touches = false;
+          while (sp > 0) {
+            const p = stack[--sp]; area++;
+            const x = p % W, y = (p / W) | 0;
+            const nb = [];
+            if (x > 0) nb.push(p-1); if (x < W-1) nb.push(p+1);
+            if (y > 0) nb.push(p-W); if (y < H-1) nb.push(p+W);
+            for (const q of nb) {
+              if (alphaAt(q) <= 10) touches = true;
+              else if (white[q] && label[q] === -1) { label[q] = comp; stack[sp++] = q; }
+            }
+            if (x===0||y===0||x===W-1||y===H-1) touches = true;
+          }
+          kill.push(touches || area > BIG); comp++;
+        }
+        for (let i = 0; i < N; i++)
+          if (label[i] >= 0 && kill[label[i]]) d[i*4+3] = 0;
+
+        // Whitish fringe defringe: pixels near transparency or semi-transparent
+        const nearT = new Uint8Array(N);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y*W + x;
+          if (alphaAt(i) > 10) continue;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const nx = x+dx, ny = y+dy;
+            if (nx>=0 && ny>=0 && nx<W && ny<H) nearT[ny*W+nx] = 1;
+          }
+        }
+        for (let i = 0; i < N; i++) {
+          const a = alphaAt(i);
+          if (a === 0) continue;
+          if ((nearT[i] || a < 250) && sprAt(i) < 30) {
+            const mn = minAt(i);
+            if (mn > 205) {
+              const w = Math.min(1, (mn - 205) / 45);
+              d[i*4+3] = Math.round(a * (1 - w));
+            }
+          }
+        }
+      } else {
+        // Light garment — rim-only peel of near-pure-white against transparency
+        const nearT = new Uint8Array(N);
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y*W + x;
+          if (alphaAt(i) > 10) continue;
+          for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+            const nx = x+dx, ny = y+dy;
+            if (nx>=0 && ny>=0 && nx<W && ny<H) nearT[ny*W+nx] = 1;
+          }
+        }
+        for (let i = 0; i < N; i++) {
+          const a = alphaAt(i);
+          if (!a || !nearT[i]) continue;
+          const mn = minAt(i);
+          if (mn > 248 && sprAt(i) < 10) {
+            const w = Math.min(1, (mn - 248) / 7);
+            d[i*4+3] = Math.round(a * (1 - w) * 0.5);
+          }
+        }
+      }
+
+      ctx.putImageData(id, 0, 0);
+      cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
+    };
+    img.onerror = () => resolve(blob);
+    img.src = URL.createObjectURL(blob);
+  });
+}
+
 function despeckleAlpha(blob, keepFrac = 0.08) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -2941,8 +3135,17 @@ async function renderRow(row) {
       row._stepLabel = 'Auto-detecting garment…'; renderTable();
       const cls = await classifyGarmentImage(row.rawFileHandle);
       if (cls) {
-        row.garmentType = cls.garment;
+        // v1.18 — the filename keyword is authoritative for garment type;
+        // vision classify fills it only when the filename didn't name it.
+        if (row._gtSource !== 'filename') row.garmentType = cls.garment;
         row.bodyType    = cls.body;
+        row._classifyFailed = false;
+      } else if (row._gtSource === 'filename') {
+        // v1.18 — garment type is already known from the filename, so a classify
+        // outage only loses the body-type refinement. Render with the global
+        // mannequin default; no review flag (the fail-closed flag exists to stop
+        // a WRONG GARMENT TYPE shipping, and that risk is gone here).
+        row.rowNote = 'Body-type auto-detect failed — using default mannequin';
         row._classifyFailed = false;
       } else {
         // Fail-closed: a classify null means Claude was unreachable mid-batch.
@@ -2990,6 +3193,10 @@ async function renderRow(row) {
 
       row._stepLabel = 'Removing background…'; renderTable();
       aBlob = await removeBg(aB64, aMime);
+
+      // v1.17 — 2nd pass: §7.5 achromatic peel removes all leftover white
+      row._stepLabel = 'White peel (2nd pass)…'; renderTable();
+      aBlob = await achromaticPeel(aBlob) || aBlob;
 
       row._stepLabel = 'Cleaning stray fragments…'; renderTable();
       let cleaned = await despeckleAlpha(aBlob);
@@ -3085,7 +3292,10 @@ async function renderRow(row) {
       if (bAttempt > 1) { row._stepLabel = 'Pass 1 — form re-roll…'; renderTable(); }
       const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
       lastRawB64 = b64;
-      const baseRaw = await removeBg(b64, bMime);
+      const baseRaw0 = await removeBg(b64, bMime);
+      // v1.17 — 2nd pass: §7.5 achromatic peel BEFORE silhouette extraction so
+      // leftover white (residual torso panels) never enters the alpha ceiling.
+      const baseRaw = await achromaticPeel(baseRaw0) || baseRaw0;
       // v1.11 — strip any dark/shaded border blob before deriving the silhouette.
       const cand = await trimBorderArtifacts(baseRaw) || baseRaw;
       const form = await detectResidualForm(cand);
@@ -3133,7 +3343,12 @@ async function renderRow(row) {
     const { base64, mimeType } = await callGemini(colorPrompt, base.base64, base.mimeType, { mannequin, garmentType });
 
     row._stepLabel = 'Removing background…'; renderTable();
-    const rawBlob = await removeBg(base64, mimeType);
+    const rawBlob0 = await removeBg(base64, mimeType);
+
+    // v1.17 — 2nd pass: §7.5 achromatic peel removes leftover white before the
+    // ceiling and BEFORE the LAB lock (white fringe would contaminate the mean).
+    row._stepLabel = 'White peel (2nd pass)…'; renderTable();
+    const rawBlob = await achromaticPeel(rawBlob0) || rawBlob0;
 
     // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
     row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
@@ -3457,6 +3672,7 @@ async function matchFiles() {
     row.sampledHex     = null;
     row.rawMatched     = null;   // actual filename that matched
     row.chipMatched    = null;
+    if (row._gtSource === 'filename') { row.garmentType = null; row._gtSource = null; }   // v1.18 — re-detect on re-match
 
     // ── Raw image ────────────────────────────────────────────────
     if (row.rawFile) {
@@ -3481,6 +3697,12 @@ async function matchFiles() {
         row.rawError  = `${matches.length} files match "${row.style}" — add explicit filename`;
         row.rawNote   = 'MULTI';
       }
+    }
+
+    // v1.18 — garment type from the raw filename (Excel column wins if set)
+    if (!row.garmentType && (row.rawMatched || row.rawFile)) {
+      const det = detectGarmentTypeFromName(row.rawMatched || row.rawFile);
+      if (det) { row.garmentType = det; row._gtSource = 'filename'; }
     }
 
     // ── Color chip ───────────────────────────────────────────────
@@ -3706,7 +3928,7 @@ function buildRow(r) {
   // ── Raw thumbnail ────────────────────────────────────────────
   let rawThumb;
   if (r.rawObjectURL) {
-    rawThumb = `<img class="thumb-img" src="${r.rawObjectURL}" alt="${r.rawFile}">
+    rawThumb = `<img class="thumb-img zoomable" src="${r.rawObjectURL}" alt="${r.rawFile}" data-cap="ORIGINAL — ${r.rawFile}">
                 <span style="font-family:var(--font-mono);font-size:9px;color:var(--ink-3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${r.rawFile}</span>`;
   } else if (r.rawFile && !['error','pending'].includes(r.status)) {
     rawThumb = `<div class="fake-raw" style="background:linear-gradient(180deg,${r.bgColor}cc 0%,${r.bgColor}88 100%)">
@@ -3732,7 +3954,7 @@ function buildRow(r) {
   if (r.archive) {
     chipThumb = `<span style="font-size:9px;font-weight:600;color:var(--ink-3);border:1px solid var(--line);border-radius:3px;padding:2px 6px;letter-spacing:.04em">AS-IS</span>`;
   } else if (r.chipObjectURL) {
-    chipThumb = `<img class="thumb-img" src="${r.chipObjectURL}" alt="${r.chipFile}" style="object-fit:cover">
+    chipThumb = `<img class="thumb-img zoomable" src="${r.chipObjectURL}" alt="${r.chipFile}" data-cap="COLOR CHIP — ${r.chipFile}" style="object-fit:cover">
                  ${r.sampledHex
                    ? `<div class="thumb-swatch" style="background:${r.sampledHex};width:16px;height:36px;border-radius:3px;border:1px solid rgba(0,0,0,.1);flex-shrink:0" title="${r.sampledHex.toUpperCase()}"></div>`
                    : ''}`;
@@ -3797,7 +4019,7 @@ function buildRow(r) {
       ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--ink)">${r.bodyType.charAt(0).toUpperCase()+r.bodyType.slice(1)}</span>`
       : `<span style="font-size:10px;color:var(--ink-3);font-style:italic">Auto</span>`;
     garmentCell = r.garmentType
-      ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--ink)">${r.garmentType.charAt(0).toUpperCase()+r.garmentType.slice(1)}</span>`
+      ? `<span style="font-family:var(--font-mono);font-size:10px;color:var(--ink)" title="${r._gtSource==='filename'?'from filename':'vision auto-detect'}">${r.garmentType.charAt(0).toUpperCase()+r.garmentType.slice(1)}</span>`
       : `<span style="font-size:10px;color:var(--ink-3);font-style:italic">Auto</span>`;
   } else {
     const mq = r.bodyType    || globalMq;
@@ -3806,10 +4028,10 @@ function buildRow(r) {
     const gtLabel = gt.charAt(0).toUpperCase() + gt.slice(1);
     const isFromExcel = r.bodyType || r.garmentType;
     typeCell    = `<span style="font-family:var(--font-mono);font-size:10px;color:${isFromExcel?'var(--ink)':'var(--ink-3)'}">${mqLabel}</span>`;
-    garmentCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${r.garmentType?'var(--ink)':'var(--ink-3)'}">${gtLabel}</span>`;
+    garmentCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${r.garmentType?'var(--ink)':'var(--ink-3)'}" title="${r._gtSource==='filename'?'from filename':(r.garmentType?'from manifest':'global setting')}">${gtLabel}</span>`;
   }
   const outCell = r.outObjectURL
-    ? `<img src="${r.outObjectURL}" style="width:28px;height:36px;object-fit:contain;border-radius:3px;background:#f0f0f0;border:1px solid rgba(0,0,0,.08)" alt="${r.outFile}">`
+    ? `<img class="zoomable" src="${r.outObjectURL}" style="width:28px;height:36px;object-fit:contain;border-radius:3px;background:#f0f0f0;border:1px solid rgba(0,0,0,.08)" alt="${r.outFile}" data-cap="RENDER — ${r.outFile}">`
     : r.status === 'rendering'
       ? `<span style="font-size:9px;color:var(--rendering);font-family:var(--font-mono);white-space:nowrap">${r._stepLabel||'…'}</span>`
       : `<span class="out-dash">—</span>`;
@@ -4371,7 +4593,7 @@ function openDrawer(idx) {
       const badge = flagged
         ? `<span class="done-badge" style="background:var(--review)">Review${r.qaIssues && r.qaIssues.length ? ' — ' + r.qaIssues.join(', ') : ''}</span>`
         : `<span class="done-badge">Done</span>`;
-      outPreview.innerHTML = `<img src="${r.outObjectURL}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--r-lg)" alt="${r.outFile}">${badge}`;
+      outPreview.innerHTML = `<img class="zoomable" src="${r.outObjectURL}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--r-lg)" alt="${r.outFile}" data-cap="RENDER — ${r.outFile}">${badge}`;
     }
     document.getElementById('d-out-filename').textContent =
       (r.outFile || '') + (r.status === 'needs-review' && r.qaNote ? `  —  QA: ${r.qaNote}` : '');
@@ -4540,7 +4762,9 @@ async function buildArchiveRows() {
       archive: true,
       style: extractStyleFromFilename(name) || stripExt(name),
       colorName: '', colorCode: '', composition: '',
-      bodyType: null, garmentType: null,
+      bodyType: null,
+      garmentType: detectGarmentTypeFromName(name),   // v1.18 — filename keyword
+      _gtSource: detectGarmentTypeFromName(name) ? 'filename' : null,
       rawFile: name, rawFileHandle: handle,
       chipFile: null, chipFileHandle: null,
       chipMatchKeys: 'As-Is',
@@ -4696,6 +4920,65 @@ function showToast(msg, type = '') {
   stack.appendChild(t);
   setTimeout(() => { t.style.opacity = '0'; t.style.transform = 'translateY(8px)'; t.style.transition = '.3s'; setTimeout(() => t.remove(), 350); }, 3500);
 }
+/* ── v1.17 Image inspector: hover preview + click-to-open floating window ──
+   Delegated on document (rows re-render constantly, so per-node listeners
+   would be lost). Capture phase + stopPropagation so clicking a thumbnail
+   inspects the image instead of opening the row drawer. Works on the
+   original (raw), color chip, render cell, and drawer preview. */
+(function initImageInspector() {
+  const lb = document.createElement('div');
+  lb.id = 'svl-lightbox';
+  lb.innerHTML = `<div class="lb-frame"><img alt=""><div class="lb-cap"></div>
+                  <div class="lb-hint">click anywhere or press Esc to close</div></div>`;
+  document.body.appendChild(lb);
+  const lbImg = lb.querySelector('img'), lbCap = lb.querySelector('.lb-cap');
+
+  const hp = document.createElement('div');
+  hp.id = 'svl-hoverprev';
+  hp.innerHTML = `<img alt="">`;
+  document.body.appendChild(hp);
+  const hpImg = hp.querySelector('img');
+
+  function openLightbox(src, cap) {
+    hp.style.display = 'none';
+    lbImg.src = src; lbCap.textContent = cap || '';
+    lb.classList.add('open');
+  }
+  function closeLightbox() { lb.classList.remove('open'); lbImg.src = ''; }
+
+  lb.addEventListener('click', closeLightbox);
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && lb.classList.contains('open')) closeLightbox();
+  });
+
+  document.addEventListener('click', e => {
+    const t = e.target.closest && e.target.closest('img.zoomable');
+    if (!t) return;
+    e.stopPropagation(); e.preventDefault();
+    openLightbox(t.src, t.dataset.cap || t.alt || '');
+  }, true);   // capture: beat the row-drawer click handler
+
+  function positionPreview(e) {
+    const pw = 352, ph = 437, pad = 14;
+    let x = e.clientX + pad, y = e.clientY + pad;
+    if (x + pw > window.innerWidth  - 8) x = e.clientX - pw - pad;
+    if (y + ph > window.innerHeight - 8) y = Math.max(8, window.innerHeight - ph - 8);
+    hp.style.left = x + 'px'; hp.style.top = y + 'px';
+  }
+  document.addEventListener('mouseover', e => {
+    const t = e.target.closest && e.target.closest('img.zoomable');
+    if (!t || lb.classList.contains('open')) return;
+    hpImg.src = t.src;
+    hp.style.display = 'block';
+    positionPreview(e);
+  });
+  document.addEventListener('mousemove', e => {
+    if (hp.style.display === 'block') positionPreview(e);
+  });
+  document.addEventListener('mouseout', e => {
+    if (e.target.closest && e.target.closest('img.zoomable')) hp.style.display = 'none';
+  });
+})();
 </script>
 </body>
 </html>
