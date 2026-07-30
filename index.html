@@ -52,11 +52,18 @@ html, body {
 
 /* ─── Layout Shell ──────────────────────────────────────────────────────── */
 #app {
-  display: grid;
-  grid-template-rows: auto auto 3px 1fr;
+  /* v1.19 — was grid with 4 tracks (auto auto 3px 1fr) but #app has FIVE
+     children since the rerun bar landed in v1.10. When the bar showed, it
+     absorbed the 1fr track (huge dead zone) and the worklist fell into an
+     implicit auto row pinned to the bottom. Flex column is robust to the
+     bar toggling: every strip is content-sized, worklist takes the rest. */
+  display: flex;
+  flex-direction: column;
   height: 100vh;
   overflow: hidden;
 }
+#app > header, #app > #setup-bar, #app > .progress-wrap, #app > .rerun-bar { flex-shrink: 0; }
+#app > #worklist-wrap { flex: 1; min-height: 0; }
 
 /* ─── Header ─────────────────────────────────────────────────────────────── */
 #header {
@@ -318,6 +325,27 @@ html, body {
 .row-pick {
   cursor: pointer; margin-right: 6px; vertical-align: middle;
   width: 14px; height: 14px;
+}
+/* v1.19 — inline per-row fix instruction (Review/Errors view). Same
+   row._userEdit as the drawer textarea; injected via userEditCorrective(). */
+.row-edit {
+  display: block;
+  margin-top: 6px;
+  width: 220px; max-width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: #fff;
+  font-family: var(--font-ui);
+  font-size: 10px; line-height: 1.45; color: var(--ink);
+  resize: vertical;
+  cursor: text;
+}
+.row-edit::placeholder { color: var(--ink-3); }
+.row-edit:focus {
+  outline: none;
+  border-color: var(--review);
+  box-shadow: 0 0 0 2px rgba(8,145,178,.12);
 }
 
 /* ─── Worklist ───────────────────────────────────────────────────────────── */
@@ -864,7 +892,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.18</span>
+    <span class="version-badge">v1.19</span>
 
     <div class="header-spacer"></div>
 
@@ -1447,7 +1475,7 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6';
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.18';   // v1.18 — per-row garment type from raw filename keywords (pant/jean/skirt → bottom; top/sweater/shirt/blouse → top); precedence Excel > filename > vision > global. v1.17 — §7.5 achromatic white-peel 2nd pass in all render chains; image inspector (hover preview + click lightbox) on original/chip/render thumbnails. v1.16 — RENDER_RULES v1.2 compliance.
+const SVL_VERSION = 'v1.19';   // v1.19 — fixed Review/Errors view layout (rerun bar had no grid track since v1.10 — #app now flex column, worklist reclaims full height); inline per-row fix-instruction field in Review/Errors view, two-way synced with the drawer edit (same row._userEdit → userEditCorrective). v1.18 — per-row garment type from raw filename keywords (pant/jean/skirt → bottom; top/sweater/shirt/blouse → top); precedence Excel > filename > vision > global. v1.17 — §7.5 achromatic white-peel 2nd pass in all render chains; image inspector (hover preview + click lightbox) on original/chip/render thumbnails. v1.16 — RENDER_RULES v1.2 compliance.
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
 //   'block' — a failed preflight hard-stops the batch (default; "no exceptions")
@@ -4044,6 +4072,18 @@ function buildRow(r) {
     ? `<input type="checkbox" class="row-pick" ${r._selected ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRowSelect(${r.idx}, this.checked)" title="Select for re-run">`
     : '';
 
+  // v1.19 — inline per-row fix instruction, shown in Review/Errors view under
+  // the QA note. Binds to the SAME row._userEdit as the drawer textarea (v1.12),
+  // so it feeds userEditCorrective() on the next re-run — single, selected, or
+  // bulk. Kept in sync with the drawer both ways via setUserEdit().
+  const inlineEdit = (inPickFilter && isRetryable && r.rawFileHandle)
+    ? `<textarea class="row-edit" rows="2"
+         placeholder="Describe what to fix for the re-run…"
+         onclick="event.stopPropagation()"
+         oninput="setUserEdit(${r.idx}, this.value, 'inline')"
+         data-edit-idx="${r.idx}">${escHtml(r._userEdit || '')}</textarea>`
+    : '';
+
   return `<tr class="${rowClass} ${activeClass}" data-idx="${r.idx}" data-status="${r.status}">
     <td>${pickBox}${r.idx + 1}</td>
     <td><span class="cell-style">${r.style || '—'}</span></td>
@@ -4054,7 +4094,7 @@ function buildRow(r) {
     <td>${garmentCell}</td>
     <td><div class="cell-thumb">${rawThumb}</div></td>
     <td><div class="cell-thumb">${chipThumb}</div></td>
-    <td style="vertical-align:top;padding-top:8px">${statusCell}</td>
+    <td style="vertical-align:top;padding-top:8px">${statusCell}${inlineEdit}</td>
     <td>${outCell}</td>
   </tr>`;
 }
@@ -4632,9 +4672,35 @@ function retryRow()    { rerenderActiveRow(); }   // v1.15 — renamed from fake
 // v1.12 — store the per-row edit instruction live as the operator types.
 // Picked up by renderRow (via userEditCorrective) on the next re-render —
 // single (this drawer) or batch (selected / all).
-function onEditInput(val) {
+// v1.19 — unified setter shared by the drawer textarea and the inline
+// Review-view field; mirrors the value to the OTHER input so both stay in
+// sync without a renderTable() (which would steal focus mid-keystroke).
+function setUserEdit(idx, val, source) {
+  const r = state.rows.find(x => x.idx === idx);
+  if (!r) return;
+  r._userEdit = val;
+  // Mirror to the drawer if it's open on this row and the edit came from inline
+  if (source !== 'drawer' && state.activeRowIdx !== null) {
+    const active = state.rows[state.activeRowIdx];
+    if (active && active.idx === idx) {
+      const d = document.getElementById('d-edit');
+      if (d && d.value !== val) d.value = val;
+    }
+  }
+  // Mirror to the inline field if it exists for this row and the edit came from the drawer
+  if (source !== 'inline') {
+    const inline = document.querySelector(`textarea.row-edit[data-edit-idx="${idx}"]`);
+    if (inline && inline.value !== val) inline.value = val;
+  }
+}
+function onEditInput(val) {   // drawer entry point (kept for existing wiring)
   const r = state.rows[state.activeRowIdx];
-  if (r) r._userEdit = val;
+  if (r) setUserEdit(r.idx, val, 'drawer');
+}
+
+// v1.19 — minimal HTML escape for user-typed text placed inside markup
+function escHtml(s) {
+  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // v1.7 — real per-row re-render. Overwrites any existing output file.
