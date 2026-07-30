@@ -821,7 +821,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.12</span>
+    <span class="version-badge">v1.16</span>
 
     <div class="header-spacer"></div>
 
@@ -1044,7 +1044,7 @@ html, body {
           <div class="hex-row">
             <div class="hex-swatch" id="d-hex-swatch"></div>
             <span class="hex-val" id="d-hex-val">—</span>
-            <button class="btn-override" id="d-override-btn" onclick="fakeOverride()">override…</button>
+            <button class="btn-override" id="d-override-btn" disabled title="Coming in Phase 3 — custom chip color picker">override…</button>
           </div>
           <div style="font-size:10px;color:var(--ink-3);margin-top:4px" id="d-chip-filename">—</div>
         </div>
@@ -1087,12 +1087,12 @@ html, body {
   </div>
 
   <div class="drawer-actions" id="drawer-actions">
-    <button class="btn-sm primary" id="btn-rerender" onclick="fakeRerender()">
+    <button class="btn-sm primary" id="btn-rerender" onclick="rerenderRow()">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M1 6A5 5 0 0110.5 3.5M11 6A5 5 0 011.5 8.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/><path d="M9 1.5l1.5 2-2 .5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
       Re-render
     </button>
-    <button class="btn-sm" id="btn-retry" onclick="fakeRetry()">Retry</button>
-    <button class="btn-sm" id="btn-open-file" onclick="fakeOpen()" disabled>Open File</button>
+    <button class="btn-sm" id="btn-retry" onclick="retryRow()">Retry</button>
+    <button class="btn-sm" id="btn-open-file" onclick="downloadRender()" disabled>Open File</button>
   </div>
 </aside>
 
@@ -1399,6 +1399,58 @@ const CLAUDE_MODEL = 'claude-sonnet-4-6';
 // Gemini model is set in Settings (⚙) and stored in localStorage as svs_gemini_model
 // Default: gemini-2.5-flash-image — current Gemini image generation model (2.0-flash shut down June 2026)
 
+/* ════════════════════════════════════════════════════════════════
+   v1.14 CONFIG — fail-closed hardening, residual-form gate, autonomy
+   ════════════════════════════════════════════════════════════════
+   Every constant here is a tuning knob the RENDER_RULES ruleset asks to
+   be surfaced for live tuning rather than buried in a function body. */
+const SVL_VERSION = 'v1.16';   // v1.16 — RENDER_RULES v1.2 compliance: Rule 7b undergarment removal, Garment Identity Lock, 75% L-anchor LAB lock, perimeter diagnostic, QA undergarment vocab
+
+// Preflight gate (fires ONE text-only Claude call before any Gemini spend).
+//   'block' — a failed preflight hard-stops the batch (default; "no exceptions")
+//   'warn'  — surface the error but let the operator proceed anyway
+const CLAUDE_PREFLIGHT_MODE = 'block';
+
+// Circuit breaker — halt a batch after this many CONSECUTIVE hard errors.
+// v1.15: split from the review streak — errors are systemic (dead key, wrong
+// model) and halt fast; needs-review can legitimately streak on hard legacy
+// images, so it gets a higher limit. 0 disables either limit.
+const CIRCUIT_BREAKER_LIMIT        = 5;   // consecutive 'error' rows
+const CIRCUIT_BREAKER_REVIEW_LIMIT = 10;  // consecutive 'needs-review' rows
+
+// Manifest-mode QA loop depth (Archive uses ARCHIVE_QA_MAX_ATTEMPTS). Kept
+// lower than Archive because Pass-1 base is shared/cached — a persistent
+// failure is a base problem, surfaced as needs-review rather than re-rolled forever.
+const MANIFEST_QA_MAX_ATTEMPTS = 2;
+
+// Residual-form gate (RENDER_RULES §4.3) — deterministic detection of a
+// leftover neck/head/bust "stalk" rising above the garment shoulders.
+//   STALK_FRAC        — a top band narrower than this fraction of the garment's
+//                       max width counts as a "stalk" (neck post / head).
+//   MIN_STALK_FRAC    — the stalk must span at least this fraction of image
+//                       height above the shoulder line to be flagged (ignores
+//                       a 1-2px collar rim).
+//   SHOULDER_FRAC     — the row where width first reaches this fraction of max
+//                       width is treated as the top of the shoulders.
+//   RESIDUAL_FORM_MODE — 'review' routes a still-suspect render to needs-review
+//                       and a ' - REVIEW' filename (conservative; "no exceptions");
+//                       'badge' keeps the cleaner render as final and only flags it.
+// v1.15 — thresholds tightened for knitwear: a turtleneck/mock-neck collar is a
+// legitimate ~0.25–0.35-width fabric column above the shoulders; a mannequin
+// neck post is much narrower. 0.20/0.08 are starting points — tune from the
+// [residual-form] console logs during the live test round.
+const RF_STALK_FRAC     = 0.20;
+const RF_MIN_STALK_FRAC = 0.08;
+const RF_SHOULDER_FRAC  = 0.60;
+const RESIDUAL_FORM_MODE = 'review';
+
+// v1.15 — garment-aware target noun. 'sweater' is the v5.4-parity noun and
+// stays the default for tops (the v5.4 case); bottoms get a neutral noun so
+// the model isn't semantically anchored to knit texture on trousers/skirts.
+function targetNoun(garmentType) {
+  return (garmentType || '').toLowerCase() === 'bottom' ? 'garment' : 'sweater';
+}
+
 function getMimeType(filename) {
   const ext = (filename.split('.').pop()||'').toLowerCase();
   return {jpg:'image/jpeg',jpeg:'image/jpeg',png:'image/png',
@@ -1429,7 +1481,7 @@ async function buildGeminiPrompt(row, ctx) {
   if (!key) throw new Error('Claude API key not set — open Settings');
 
   const mannequin = localStorage.getItem('svs_mannequin') || 'unisex';
-  const target    = 'sweater';
+  const target    = targetNoun(row.garmentType || localStorage.getItem('svs_garment'));   // v1.15
 
   // Exact v5.4 system prompt
   const systemPrompt =
@@ -1510,7 +1562,7 @@ async function callGemini(prompt, rawBase64, rawMime, options = {}) {
   const parts = [
     { inline_data: { data: rawBase64, mime_type: rawMime } },
     { text:
-`AI FASHION EDITOR: FOCUS: Only modify the "sweater".
+`AI FASHION EDITOR: FOCUS: Only modify the "${targetNoun(garmentType)}".
 REQUEST: "${prompt}".
 
 ═══════════════════════════════════════════════════════════════
@@ -1558,8 +1610,31 @@ EXPOSED-AREA RULE: For strapless, sleeveless, off-shoulder, crop, backless, tube
 5. NO SHADOWS AT ALL: There must be absolutely NO drop shadows under the hem, NO floor shadows, NO soft ambient occlusion at the base of the garment, NO gradient darkening around the silhouette, NO shadow halos under hemlines, cords, or collars. Every single pixel that is not part of the garment fabric itself must be flat, pure, sterile solid white (#FFFFFF).
 6. ${styleRule}
 7. NO MODEL OR HUMAN PARTS — ABSOLUTELY NO MANNEQUIN HEAD: No human faces, skin, arms, legs, models, or mannequin heads anywhere in the image. The neck opening of the garment must show only the hollow interior fabric — NO gray plastic neck post, NO mannequin head form, NO bust form visible above the collar. For strapless/sleeveless/crop/backless/bustier garments: NO fabric dress form, NO tailor's mannequin, NO dressmaker's bust above the neckline — that area must be pure #FFFFFF background only.
+7b. REMOVE ANY LAYERED UNDERGARMENT: If a separate garment (t-shirt, tank, camisole, blouse) is worn underneath the target garment and visible through any opening, remove it completely — it is as foreign as the model's body. Through any opening show only the target garment's own hollow interior (the inside of its opposite/back panel, inner facing, seams) — never an inner layer, never skin, never a flat white patch standing in for the missing layer.
 8. DIMENSIONS: Strictly align to a 3:4 portrait aspect ratio (1200px width, 1600px height). The garment must be beautifully centered with a comfortable 15% margin from all borders to prevent clipping.
-9. ABSOLUTE COLOR FIDELITY: If the request includes changing the color/recoloring (e.g., mentions changing color, paint, hex code, or Pantone), you MUST completely overrule and throw away the old, original base colors and undertones of the garment. Do not tint or blend the old color into the new one. Paint the entire garment's fabric cleanly, evenly, and precisely with the requested target hex or Pantone shade as a fresh new dye. Keep the fabric rendered under bright, diffuse, high-key commercial advertising studio lighting. Folds and shading must be extremely soft, subtle, and natural; under no circumstances allow heavy gray, black, or muddy shadows to darken or mute the garment's overall fabric color below the requested target swatch value. The main body/flat surface colors of the garment must match the user's requested swatch color perfectly.`
+9. ABSOLUTE COLOR FIDELITY: If the request includes changing the color/recoloring (e.g., mentions changing color, paint, hex code, or Pantone), you MUST completely overrule and throw away the old, original base colors and undertones of the garment. Do not tint or blend the old color into the new one. Paint the entire garment's fabric cleanly, evenly, and precisely with the requested target hex or Pantone shade as a fresh new dye. Keep the fabric rendered under bright, diffuse, high-key commercial advertising studio lighting. Folds and shading must be extremely soft, subtle, and natural; under no circumstances allow heavy gray, black, or muddy shadows to darken or mute the garment's overall fabric color below the requested target swatch value. The main body/flat surface colors of the garment must match the user's requested swatch color perfectly.
+
+═══════════════════════════════════════════════════════════════
+PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
+═══════════════════════════════════════════════════════════════
+► The output MUST be the SAME garment style as the input, only
+  rendered on the ghost mannequin (with any explicitly requested
+  fit/color/wash change applied). You may change 3D volume, drape,
+  and fit — you may NOT change what the garment IS.
+► PRESERVE EXACTLY, pixel-for-pixel in type and count:
+  • Closure/front opening — a FULL button placket must be rendered
+    as that same full placket with the SAME number of buttons.
+    Never convert a button-front garment into a pullover or polo.
+    Never remove, add, or relocate buttons, snaps, zips, plackets.
+    COUNT the buttons — more than 4 down the front is NOT a polo;
+    buttons may be low-contrast (tonal, cream-on-cream) so look
+    carefully.
+  • Hem, cuff, and collar trim — keep the input's EXACT colors and
+    pattern: stripes/patterns continue into the trim exactly as
+    photographed. NEVER invent solid contrast trim (e.g. white hem
+    or cuffs) not in the input, and NEVER add ties, drawstrings,
+    hanging strips, tabs, or panels not in the input.
+═══════════════════════════════════════════════════════════════`
     }
   ];
 
@@ -1732,6 +1807,21 @@ function removeBg(base64, mimeType) {
       }
       for(let i=0;i<W*H;i++) d[i*4+3]=Math.round(alpha[i]*255);
 
+      // v1.16 — RENDER_RULES v1.2 §7.7 perimeter diagnostic: if >25% of the
+      // image perimeter is still highly opaque after extraction, the bg strip
+      // likely failed. Log a warning with the sampled bg color; deliberately
+      // do NOT auto-apply an aggressive strip (risk of eating dark pattern
+      // elements like plaid black squares).
+      {
+        let perim=0, opq=0;
+        const chk=i=>{perim++;if(d[i*4+3]>200)opq++;};
+        for(let x=0;x<W;x++){chk(x);chk((H-1)*W+x);}
+        for(let y=1;y<H-1;y++){chk(y*W);chk(y*W+W-1);}
+        if(perim>0 && opq/perim>0.25){
+          console.warn(`[SVL] Perimeter diagnostic: ${(opq/perim*100).toFixed(0)}% of perimeter still opaque after bg removal — sampled bg rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}). Background may not be pure white; no aggressive strip applied.`);
+        }
+      }
+
       ctx.putImageData(id,0,0);
       cv.toBlob(blob=>resolve(blob),'image/png');
     };
@@ -1810,13 +1900,14 @@ function enforceEyedropColor(blob, targetHex) {
       const dA = tA - sumA / n;
       const dB = tB - sumB / n;
 
-      // Apply mean-LAB shift to every opaque pixel
+      // Apply mean-LAB shift to every opaque pixel — full chroma anchor (a*, b*),
+      // 75% luminance anchor (L*) to preserve shading (RENDER_RULES v1.2 §3.4)
       for (let i = 0; i < W * H; i++) {
         const pi = i * 4;
         if (d[pi + 3] < 128) continue;
         const [L, a, b] = _xyzToLab(..._rgbToXyz(d[pi], d[pi + 1], d[pi + 2]));
         const [r2, g2, b2] = _xyzToRgb(..._labToXyz(
-          Math.max(0,   Math.min(100, L + dL)),
+          Math.max(0,   Math.min(100, L + dL * 0.75)),
           Math.max(-128, Math.min(127, a + dA)),
           Math.max(-128, Math.min(127, b + dB))
         ));
@@ -1961,14 +2052,14 @@ function buildRenderAsIsPrompt(row, mannequin, garmentType) {
       `CRITICAL: The mannequin must be 100% invisible. No waistband stand, no leg forms, no clips. Only the garment fabric is visible. ` +
       `CRITICAL COLOR RULE: Reproduce the exact color and texture of the original garment with 100% fidelity. Do NOT shift the color. ` +
       `${fabricLine} ` +
-      `Maintain all original design details, seams, stitching, and construction exactly. ` +
+      `CONSTRUCTION RULE: Identify the closure by counting the buttons — a full-length button placket must be reproduced with the same button count; never convert a button-front garment into a polo, half-placket, or pullover. Never remove, add, or relocate buttons, snaps, zips, or plackets — buttons may be low-contrast (tonal, cream-on-cream) so look carefully. Keep hem, cuff, and collar trim in the EXACT colors and pattern of the input — never invent solid contrast trim, ties, drawstrings, tabs, or panels not in the input. Maintain all original design details, seams, stitching, and construction exactly. ` +
       `Pure white background #FFFFFF, zero gradients, zero shadows. ` +
       `Bright diffuse studio lighting. Straight front-facing camera.`
     );
   }
 
   return (
-    `Perform a professional 3D ${mannequin} TRUE GHOST mannequin e-commerce render of this sweater. ` +
+    `Perform a professional 3D ${mannequin} TRUE GHOST mannequin e-commerce render of this ${targetNoun(garmentType)}. ` +   // v1.15
     `MANNEQUIN: ${mannSpec} CRITICAL — ZERO VISIBLE MANNEQUIN OR DRESS FORM OF ANY COLOR: ` +
     `The mannequin must be 100% invisible. Absolutely no visible neck post, neck cylinder, ` +
     `torso outline, stand, base, plastic mannequin parts, fabric-covered dress form, tailor's bust, ` +
@@ -1985,7 +2076,7 @@ function buildRenderAsIsPrompt(row, mannequin, garmentType) {
     `the color in any way. If the garment is charcoal, render it charcoal. If it is navy, render it navy. ` +
     `The finished render color must match the original garment color exactly as photographed. ` +
     `${fabricLine} ` +
-    `Maintain all original design details, seams, stitching, and construction exactly as shown. ` +
+    `CONSTRUCTION RULE: Identify the closure by counting the buttons — a full-length button placket must be reproduced with the same button count; never convert a button-front garment into a polo, half-placket, or pullover. Never remove, add, or relocate buttons, snaps, zips, or plackets — buttons may be low-contrast (tonal, cream-on-cream) so look carefully. Keep hem, cuff, and collar trim in the EXACT colors and pattern of the input — never invent solid contrast trim, ties, drawstrings, tabs, or panels not in the input. Maintain all original design details, seams, stitching, and construction exactly as shown. ` +
     `Place the garment on a strictly 100% PURE FLAT SOLID WHITE (#FFFFFF) background — exact RGB (255,255,255), ` +
     `zero gradients, zero shadows, zero vignette — so the background can be removed to full transparency after rendering. ` +
     `Render under bright, diffuse, high-exposure commercial studio front lighting that preserves true color without darkening. ` +
@@ -2106,7 +2197,7 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
     `\n• If WORN: REMOVE THE PERSON ENTIRELY — no skin, hair, hands, face, jewelry, or any other ` +
     `garments they wear. Isolate ONLY the ${garmentNoun} and rebuild any areas hidden by the ` +
     `body, arms, hair, or pose (interior back collar, occluded sleeves, hem, side seams) ` +
-    `consistent with the visible construction, knit gauge, and drape. ` +
+    `consistent with the visible construction, knit gauge, and drape. If a separate undergarment (t-shirt, tank, camisole, blouse) shows through any opening of the target garment, remove it too — through any opening show only the target garment's own hollow interior, never an inner layer, never skin, never a flat white patch standing in for the missing layer. ` +
     `\n• If FLAT / on a hanger: do NOT leave it flat. INFLATE it into a filled 3D form as if worn ` +
     `on an invisible body — add realistic chest/torso volume, rounded shoulders, natural fabric ` +
     `weight, soft folds, and an open hollow neckline. The result must look identical in volume and ` +
@@ -2117,7 +2208,7 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
     `colours — built with full 3D ghost-mannequin volume. Do NOT output a drawing, a flat 2D shape, ` +
     `or any sketch/line-art look; output a realistic photographed garment. ` +
     `\nIn ALL cases: straighten to a natural, symmetrical, front-facing ghost-mannequin presentation. ` +
-    `ABSOLUTE AS-IS RULE: Do NOT redesign, restyle, modernize, simplify, or invent details. ` +
+    `ABSOLUTE AS-IS RULE: Do NOT redesign, restyle, modernize, simplify, or invent details. CONSTRUCTION RULE: Identify the closure by counting the buttons — a full-length button placket must be reproduced with the same button count; never convert a button-front garment into a polo, half-placket, or pullover. Never invent solid contrast trim (e.g. white hem or cuffs) not in the source, and never add ties, drawstrings, hanging strips, tabs, or panels not in the source. ` +
     `Preserve the exact colour, pattern, stripes, colourblocking, knit texture, stitch detail, trim, ` +
     `buttons, zippers, logos, neckline shape, sleeve length, and proportions shown in the source. ` +
     `Converting a flat lay or sketch into a 3D photorealistic ghost render is REQUIRED and is NOT ` +
@@ -2382,7 +2473,7 @@ async function qaCheckRender(blob, originalB64 = null) {
     'Respond with ONLY a JSON object, no other text, no markdown fences:\n' +
     '{"pass":true|false,"issues":["mannequin"|"background"|"angle"|"hanger"|"garment"' + (originalB64 ? '|"color"' : '') + '],"reason":"<=12 words"}\n' +
     'Set pass=false and add the matching tag if ANY of these are present in the render:\n' +
-    '- "mannequin": any visible mannequin, dress form, tailor\'s bust, body, person, skin, hair, face, head, neck post, plastic stand, base, or support — anything other than the garment fabric itself.\n' +
+    '- "mannequin": any visible mannequin, dress form, tailor\'s bust, body, person, skin, hair, face, head, neck post, plastic stand, base, or support — anything other than the garment fabric itself. Also flag a separate undergarment layer (t-shirt, tank, camisole) visible through the neckline or any opening of the garment.\n' +
     '- "background": the background is not clean pure white #FFFFFF — gray/colored smudges, torn fragments, halos, ANY drop/floor/contact shadow, ambient occlusion, vignette, gradient, or floating leftover background bits.\n' +
     '- "angle": the garment is not shot perfectly straight-on — any three-quarter angle, profile, back view, tilt, rotation, skew, or asymmetry.\n' +
     '- "hanger": any visible hanger, hook, wire, clip, price tag, size tag, brand label, or cord — the garment must float cleanly on its own.\n' +
@@ -2433,7 +2524,7 @@ function buildArchiveRetryPrompt(row, mannequin, garmentType, qa) {
   if (issues.includes('mannequin')) {
     corrective +=
       'The previous render left a VISIBLE MANNEQUIN, DRESS FORM, BODY, PERSON, HEAD, FACE, NECK POST, or STAND in the image — this is the #1 failure and is unacceptable. ' +
-      'You MUST completely DELETE every trace of any mannequin, body, person, head, neck post, base, or stand, and rebuild the garment as a hollow TRUE GHOST mannequin with an open, empty neck opening — ONLY the garment fabric may remain, floating in space. ';
+      'You MUST completely DELETE every trace of any mannequin, body, person, head, neck post, base, or stand, and rebuild the garment as a hollow TRUE GHOST mannequin with an open, empty neck opening — ONLY the garment fabric may remain, floating in space. If a separate undergarment layer (t-shirt, tank, camisole) was visible through any opening, remove it too and show only the target garment\'s own hollow interior. ';
   }
   if (issues.includes('background')) {
     corrective +=
@@ -2468,6 +2559,362 @@ function blobToBase64(blob) {
   });
 }
 
+/* ════════════════════════════════════════════════════════════════
+   v1.14 — PREFLIGHT GATE (fail-closed)
+   ════════════════════════════════════════════════════════════════
+   Fires ONE cheap text-only Claude call before any Gemini spend. If Claude
+   is unreachable / out of credit / mis-keyed, the batch never starts, so a
+   depleted balance can no longer let unguarded renders ship as "done".
+   RENDER_RULES §6: verify the live floor, don't trust the log. */
+async function claudePreflight() {
+  const key = localStorage.getItem('svs_claude_key') || '';
+  if (!key) return { ok: false, error: 'Claude API key not set — open Settings (⚙)' };
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': key,
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true',
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 4,
+        messages: [{ role: 'user', content: 'ok' }]
+      })
+    });
+    if (!res.ok) {
+      const t = await res.text().catch(() => String(res.status));
+      // Surface the REAL error (e.g. HTTP 400 "credit balance too low"), not a generic one.
+      return { ok: false, error: `Claude ${res.status}: ${t.slice(0, 200)}` };
+    }
+    return { ok: true, error: null };
+  } catch (err) {
+    return { ok: false, error: 'Claude unreachable: ' + (err.message || 'network error') };
+  }
+}
+
+// Gate wrapper used by every batch entry point. Returns true if it is safe to
+// spend on Gemini. In 'block' mode a failure returns false (caller must abort);
+// in 'warn' mode it surfaces the error but returns true.
+async function ensureClaudeReady(context) {
+  // v1.15 — assert the Gemini key exists too; otherwise a headless run passes
+  // Claude preflight and then burns circuit-breaker rows on per-row key errors.
+  if (!(localStorage.getItem('svs_gemini_key') || '')) {
+    const gmsg = 'Preflight failed — Gemini API key not set (open Settings ⚙)';
+    setBatchStatus(gmsg);
+    showToast(gmsg, 'error');
+    if (CLAUDE_PREFLIGHT_MODE !== 'warn') return false;
+  }
+  setBatchStatus('Preflight — checking Claude…');
+  const pf = await claudePreflight();
+  if (pf.ok) return true;
+  const msg = `Preflight failed — ${pf.error}`;
+  setBatchStatus(msg);
+  showToast(msg, 'error');
+  if (CLAUDE_PREFLIGHT_MODE === 'warn') return true;
+  return false;   // 'block' — hard stop before any Gemini call
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v1.14 — RESIDUAL-FORM GATE (RENDER_RULES §4.3, deterministic)
+   ════════════════════════════════════════════════════════════════
+   A stochastic image model cannot be clamped by prompt text, so mannequin
+   removal must have a CODE floor. This scans the alpha silhouette for a narrow
+   opaque "stalk" (neck post / head / bust) rising above the garment shoulders —
+   the classic leftover-form signature. A correct ghost render is transparent
+   above the shoulders (open hollow neck); a surviving form is a tall thin
+   opaque column there. No API, so it never fails open. */
+async function detectResidualForm(blob) {
+  const NEG = { suspect: false, reason: null, metrics: null };
+  if (!blob) return NEG;
+  let bmp;
+  try { bmp = await createImageBitmap(blob); } catch (_) { return NEG; }
+  const W = bmp.width, H = bmp.height;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const ctx = cv.getContext('2d');
+  ctx.drawImage(bmp, 0, 0);
+  let data;
+  try { data = ctx.getImageData(0, 0, W, H).data; } catch (_) { return NEG; }
+
+  // Per-row max contiguous opaque run (width of the garment at that row).
+  const widths = new Int32Array(H);
+  let maxWidth = 0, topRow = -1;
+  for (let y = 0; y < H; y++) {
+    let run = 0, best = 0;
+    const base = y * W * 4;
+    for (let x = 0; x < W; x++) {
+      const a = data[base + x * 4 + 3];
+      if (a > 128) { run++; if (run > best) best = run; }
+      else run = 0;
+    }
+    widths[y] = best;
+    if (best > maxWidth) maxWidth = best;
+    if (best > 0 && topRow === -1) topRow = y;
+  }
+  if (maxWidth === 0 || topRow === -1) return NEG;   // empty frame — coverage guard handles it
+
+  // Top of the shoulders = first row reaching SHOULDER_FRAC of max width.
+  let shoulderRow = topRow;
+  for (let y = topRow; y < H; y++) {
+    if (widths[y] >= RF_SHOULDER_FRAC * maxWidth) { shoulderRow = y; break; }
+  }
+
+  // Height of the region ABOVE the shoulders, and how wide it is on average.
+  const stalkRows = shoulderRow - topRow;
+  const stalkFracH = stalkRows / H;
+  let stalkSum = 0;
+  for (let y = topRow; y < shoulderRow; y++) stalkSum += widths[y];
+  const stalkAvgW = stalkRows > 0 ? (stalkSum / stalkRows) : 0;
+  const stalkWidthFrac = stalkAvgW / maxWidth;
+
+  // Suspect when a NARROW band persists for a MEANINGFUL height above the
+  // shoulders — i.e. something tall and thin is standing above the garment.
+  const suspect = stalkFracH >= RF_MIN_STALK_FRAC && stalkWidthFrac < RF_STALK_FRAC;
+  const metrics = {
+    imgH: H, maxWidth, topRow, shoulderRow,
+    stalkFracH: +stalkFracH.toFixed(4),
+    stalkWidthFrac: +stalkWidthFrac.toFixed(4)
+  };
+  // Log for live threshold tuning (RENDER_RULES §4.3 asks for this).
+  console.log('[residual-form]', suspect ? 'SUSPECT' : 'clear', metrics);
+  return { suspect, reason: suspect ? 'possible residual form above neckline' : null, metrics };
+}
+
+/* Corrective sentences for a failed QA result — shared by the Manifest QA
+   loop and available to Archive. Names the exact defect so the re-roll knows
+   what to fix (RENDER_RULES §2: name the failure modes). */
+function buildQaCorrective(qa) {
+  const issues = (qa && qa.issues) || [];
+  let c = 'IMPORTANT: A PREVIOUS ATTEMPT FAILED QUALITY CONTROL. You MUST correct it now. ';
+  if (issues.includes('mannequin') || issues.includes('form'))
+    c += 'The previous render left a VISIBLE MANNEQUIN, DRESS FORM, BODY, HEAD, NECK POST, or STAND. DELETE every trace of it and rebuild the garment as a hollow TRUE GHOST with an open empty neck opening — ONLY garment fabric may remain — including removing any separate undergarment layer visible through an opening. ';
+  if (issues.includes('background'))
+    c += 'The background was not clean. The ENTIRE background MUST be a single flat PURE WHITE #FFFFFF with NO shadow, halo, gradient, or leftover fragment of any kind. ';
+  if (issues.includes('angle'))
+    c += 'Render the garment perfectly straight-on — symmetrical, centered, perpendicular to camera. No three-quarter angle, tilt, or rotation. ';
+  if (issues.includes('hanger'))
+    c += 'Remove ALL hangers, hooks, clips, tags, labels, and cords — the garment must float cleanly on its own. ';
+  if (issues.includes('garment'))
+    c += 'Reconstruct the COMPLETE garment, fully in frame, correct proportion, nothing clipped at the edges. ';
+  return c;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v1.14 — RUN SUMMARY + LOCK FILE (machine-readable autonomy contract)
+   ════════════════════════════════════════════════════════════════
+   Cowork cannot read the status bar. These files ARE the handshake:
+   • _SVL_RUNNING.lock  — present while a batch is in flight (crash detection)
+   • run-summary.json   — the authoritative result; distribute ONLY when
+                          all_verified === true
+   • run-summary.txt    — the same, human-readable */
+/* v1.15 — abort summary: every headless-relevant early exit MUST leave a
+   machine-readable trace, or Cowork polls forever for a summary that never
+   comes. aborted:true + all_verified:false = escalate to a human. */
+async function writeAbortSummary(reason) {
+  if (!state.folders.output) return;
+  try {
+    const body = JSON.stringify({
+      app: SVL_VERSION,
+      finishedAt: new Date().toISOString(),
+      reason,
+      aborted: true,
+      all_verified: false,
+      counts: { total: 0, done: 0, needsReview: 0, error: 0, skipped: 0 },
+      rows: []
+    }, null, 2);
+    await saveOutput(state.folders.output, 'run-summary.json', new Blob([body], { type: 'application/json' }));
+    await saveOutput(state.folders.output, 'run-summary.txt',
+      new Blob([`SweaterVision Light ${SVL_VERSION} — RUN ABORTED\n${reason}\nSAFE TO DISTRIBUTE: NO\n`], { type: 'text/plain' }));
+  } catch (_) {}
+}
+
+async function writeRunLock(meta) {
+  if (!state.folders.output) return;
+  try {
+    const body = JSON.stringify({ app: SVL_VERSION, startedAt: new Date().toISOString(), ...meta }, null, 2);
+    await saveOutput(state.folders.output, '_SVL_RUNNING.lock', new Blob([body], { type: 'application/json' }));
+  } catch (_) {}
+}
+async function clearRunLock() {
+  if (!state.folders.output) return;
+  try { await state.folders.output.removeEntry('_SVL_RUNNING.lock'); } catch (_) {}
+}
+
+async function writeRunSummary(reason) {
+  if (!state.folders.output) return null;
+  const rows = state.rows;
+  const rec = r => ({
+    style: r.style || null,
+    colorName: r.colorName || null,
+    colorCode: r.colorCode || null,
+    rawFile: r.rawFile || null,
+    status: r.status,
+    outFile: r.outFile || null,
+    skipped: !!r._skipReason,
+    qaIssues: r.qaIssues || [],
+    qaReason: r.qaNote || null,
+    formCheck: !!r._formCheck,
+    formBadge: !!r._formBadge,   // v1.15 — form-gate flagged but QA positively passed
+    classifyFailed: !!r._classifyFailed,
+    error: r.error || null
+  });
+  const counts = {
+    total:        rows.length,
+    done:         rows.filter(r => r.status === 'done').length,
+    needsReview:  rows.filter(r => r.status === 'needs-review').length,
+    error:        rows.filter(r => r.status === 'error').length,
+    skipped:      rows.filter(r => r._skipReason).length,
+    badges:       rows.filter(r => r._formBadge).length   // v1.15
+  };
+  // Safe to distribute ONLY if nothing is unverified: no errors, no reviews,
+  // no form-checks, and the circuit breaker never tripped.
+  const all_verified =
+    counts.error === 0 &&
+    counts.needsReview === 0 &&
+    !state.circuitTripped &&
+    rows.every(r => !r._formCheck) &&
+    counts.total > 0;
+
+  const summary = {
+    app: SVL_VERSION,
+    finishedAt: new Date().toISOString(),
+    reason: reason || 'batch complete',
+    mode: state.archiveMode ? 'archive' : 'manifest',
+    preflight_mode: CLAUDE_PREFLIGHT_MODE,
+    circuit_tripped: !!state.circuitTripped,
+    all_verified,
+    counts,
+    rows: rows.map(rec)
+  };
+
+  try {
+    const json = JSON.stringify(summary, null, 2);
+    await saveOutput(state.folders.output, 'run-summary.json', new Blob([json], { type: 'application/json' }));
+    const txt =
+      `SweaterVision Light ${SVL_VERSION} — run summary\n` +
+      `Finished: ${summary.finishedAt}\n` +
+      `Mode: ${summary.mode}\n` +
+      `SAFE TO DISTRIBUTE: ${all_verified ? 'YES' : 'NO'}\n` +
+      (state.circuitTripped ? `*** CIRCUIT BREAKER TRIPPED — batch halted early ***\n` : '') +
+      `\nDone: ${counts.done}   Needs review: ${counts.needsReview}   Errors: ${counts.error}   Skipped: ${counts.skipped}   Total: ${counts.total}\n` +
+      (counts.needsReview || counts.error
+        ? `\nNot shipped clean:\n` + rows.filter(r => r.status === 'needs-review' || r.status === 'error')
+            .map(r => `  - ${r.outFile || r.rawFile || r.style} [${r.status}] ${r.qaNote || r.error || ''}`).join('\n') + '\n'
+        : '');
+    await saveOutput(state.folders.output, 'run-summary.txt', new Blob([txt], { type: 'text/plain' }));
+  } catch (_) {}
+  return summary;
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v1.14 — FOLDER HANDLE PERSISTENCE + AUTORUN (Cowork headless launch)
+   ════════════════════════════════════════════════════════════════
+   File System Access handles can be persisted in IndexedDB and, once the user
+   has granted permission, re-acquired on reload WITHOUT re-picking. That lets
+   Cowork re-launch the app with ?autorun=1 and run unattended after a one-time
+   manual grant. (First run still needs one human click to grant permission —
+   a browser security constraint we cannot bypass from a single HTML file.) */
+function idbOpen() {
+  return new Promise((res, rej) => {
+    const req = indexedDB.open('svl-handles', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('folders');
+    req.onsuccess = () => res(req.result);
+    req.onerror = () => rej(req.error);
+  });
+}
+async function idbSaveHandle(key, handle) {
+  try {
+    const db = await idbOpen();
+    await new Promise((res, rej) => {
+      const tx = db.transaction('folders', 'readwrite');
+      tx.objectStore('folders').put(handle, key);
+      tx.oncomplete = res; tx.onerror = () => rej(tx.error);
+    });
+  } catch (_) {}
+}
+async function idbGetHandle(key) {
+  try {
+    const db = await idbOpen();
+    return await new Promise((res) => {
+      const tx = db.transaction('folders', 'readonly');
+      const rq = tx.objectStore('folders').get(key);
+      rq.onsuccess = () => res(rq.result || null);
+      rq.onerror = () => res(null);
+    });
+  } catch (_) { return null; }
+}
+async function verifyPermission(handle, readwrite) {
+  if (!handle) return false;
+  const opts = { mode: readwrite ? 'readwrite' : 'read' };
+  try {
+    if ((await handle.queryPermission(opts)) === 'granted') return true;
+    // requestPermission needs a user gesture; in a headless autorun it will
+    // simply return non-granted, which we treat as "not ready".
+    return (await handle.requestPermission(opts)) === 'granted';
+  } catch (_) { return false; }
+}
+
+// Restore previously-granted folders on load (best effort, silent).
+async function restoreFolders() {
+  const wantAutorun = new URLSearchParams(location.search).get('autorun') === '1';
+  const rawH = await idbGetHandle('raw');
+  const outH = await idbGetHandle('output');
+  if (!rawH && !outH) return false;
+
+  // In autorun we must not prompt; only accept already-granted permissions.
+  const rawOk = rawH && (wantAutorun ? (await rawH.queryPermission({ mode: 'read' })) === 'granted'
+                                     : await verifyPermission(rawH, false));
+  const outOk = outH && (wantAutorun ? (await outH.queryPermission({ mode: 'readwrite' })) === 'granted'
+                                     : await verifyPermission(outH, true));
+  if (rawOk) {
+    state.folders.raw = rawH; state.inputs.raw = true;
+    updateInputSlot('raw', rawH.name + '/');
+    try { state.rawFileIndex = await buildFileIndex(rawH); } catch (_) {}
+  }
+  if (outOk) {
+    state.folders.output = outH; state.inputs.output = true;
+    updateInputSlot('output', outH.name + '/');
+  }
+  const chipH = await idbGetHandle('chip');
+  if (chipH) {
+    const chipOk = wantAutorun ? (await chipH.queryPermission({ mode: 'read' })) === 'granted'
+                               : await verifyPermission(chipH, false);
+    if (chipOk) {
+      state.folders.chip = chipH; state.inputs.chip = true;
+      updateInputSlot('chip', chipH.name + '/');
+      try { state.chipFileIndex = await buildFileIndex(chipH); } catch (_) {}
+    }
+  }
+  return rawOk && outOk;
+}
+
+// Autonomous launch: only Archive Mode is folder-driven (no Excel), so autorun
+// is scoped to Archive — the stated "drop raw images in a folder" workflow.
+async function maybeAutorun() {
+  if (new URLSearchParams(location.search).get('autorun') !== '1') return;
+  if (!state.archiveMode) {
+    // Force Archive Mode for headless folder runs.
+    setMode('archive');
+  }
+  const ready = await restoreFolders();
+  if (!ready) {
+    setBatchStatus('Autorun: folders not pre-granted — pick Originals + Output once, then re-launch with ?autorun=1');
+    showToast('Autorun needs a one-time folder grant', 'error');
+    // v1.15 — leave a machine-readable trace when possible. If the Output
+    // folder itself wasn't granted we physically can't write into it — the
+    // contract covers that case with a poll timeout on Cowork's side.
+    await writeAbortSummary('autorun aborted — folder permission not granted');
+    return;
+  }
+  await buildArchiveRows();
+  syncProcessBtn();
+  setBatchStatus('Autorun — starting batch…');
+  startBatch();
+}
+
 // ── Single row render ─────────────────────────────────────────────
 async function renderRow(row) {
   row.status = 'rendering'; row.error = null;
@@ -2487,15 +2934,22 @@ async function renderRow(row) {
   // Claude-vision QA gate; retry on failure, flag as needs-review if it
   // never passes. (Single-pass extraction in v1.6/1.7; QA loop added v1.8.)
   if (row.archive) {
-    // Auto-detect garment + body type (v1.7) — once per row, cached for re-renders
-    if (!row._classified) {
+    // Auto-detect garment + body type (v1.7) — once per row, cached for re-renders.
+    // v1.15 — a FAILED classification is retried on the next render/re-run so a
+    // transient Claude outage doesn't make the row permanently incurable.
+    if (!row._classified || row._classifyFailed) {
       row._stepLabel = 'Auto-detecting garment…'; renderTable();
       const cls = await classifyGarmentImage(row.rawFileHandle);
       if (cls) {
         row.garmentType = cls.garment;
         row.bodyType    = cls.body;
+        row._classifyFailed = false;
       } else {
-        row.rowNote = 'AUTO-DETECT FAILED — using defaults';
+        // Fail-closed: a classify null means Claude was unreachable mid-batch.
+        // We still render with defaults, but the row will NOT ship as "done" —
+        // it is routed to needs-review so the wrong garment type can't slip out.
+        row.rowNote = 'AUTO-DETECT FAILED — using defaults, flagged for review';
+        row._classifyFailed = true;
       }
       row._classified = true;
       renderTable();
@@ -2514,7 +2968,8 @@ async function renderRow(row) {
     // A render that never passes is saved under a " - REVIEW" name (so it
     // does NOT satisfy the idempotency key and is re-attempted next run) and
     // the row is flagged 'needs-review' — failures never silently ship.
-    let aFinal = null, aBlob = null, qa = null;
+    let aFinal = null, aBlob = null, qa = null, formResult = { suspect: false };
+    row._formBadge = false;   // v1.15 — fresh verdict per render
     for (let attempt = 1; attempt <= ARCHIVE_QA_MAX_ATTEMPTS; attempt++) {
       const retrying = attempt > 1;
       row._stepLabel = retrying
@@ -2522,8 +2977,13 @@ async function renderRow(row) {
         : 'Extracting garment — render as-is…';
       renderTable();
 
-      const archPrompt = userEditCorrective(row) + ((retrying && qa)
-        ? buildArchiveRetryPrompt(row, aMannequin, aGarment, qa)
+      // On a retry, fold any residual-form finding into the corrective so the
+      // re-roll is told explicitly to remove the leftover neck/head/bust.
+      const retryQa = (retrying && (qa || formResult.suspect))
+        ? { pass: false, issues: [ ...((qa && qa.issues) || []), ...(formResult.suspect ? ['mannequin'] : []) ] }
+        : qa;
+      const archPrompt = userEditCorrective(row) + ((retrying && retryQa)
+        ? buildArchiveRetryPrompt(row, aMannequin, aGarment, retryQa)
         : buildArchiveExtractionPrompt(row, aMannequin, aGarment));
       const { base64: aB64, mimeType: aMime } =
         await callGemini(archPrompt, rawBase64, rawMime, { mannequin: aMannequin, garmentType: aGarment });
@@ -2547,34 +3007,59 @@ async function renderRow(row) {
       if (coverage < 0.02 || coverage > 0.97) {
         qa = { pass: false, issues: ['background'],
                reason: coverage < 0.02 ? 'empty render — nothing generated' : 'background not removed' };
+        formResult = { suspect: false };
         if (attempt < ARCHIVE_QA_MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 1500)); continue; }
         break;
       }
 
+      // v1.14 — deterministic residual-form gate (RENDER_RULES §4.3), BEFORE
+      // the QA vision call. Catches a surviving neck/head/bust in code even if
+      // the (stochastic, possibly-unavailable) QA call would have missed it.
+      row._stepLabel = 'Form-gate scan…'; renderTable();
+      formResult = await detectResidualForm(aFinal || cleaned || aBlob);
+
       row._stepLabel = `Quality check ${attempt}/${ARCHIVE_QA_MAX_ATTEMPTS}…`; renderTable();
       qa = await qaCheckRender(aFinal || cleaned || aBlob, qaOriginalB64);
 
-      if (!qa || qa.pass) break;                 // passed, or QA unavailable (non-fatal)
+      // v1.14 FAIL-CLOSED: a null QA (Claude unreachable / out of credit /
+      // bad JSON) is NO LONGER treated as a pass.
+      // v1.15 — QA-agreement downgrade (RENDER_RULES §4.3): form-gate suspicion
+      // gets ONE automatic re-roll; if the re-roll is still suspect but the
+      // vision QA POSITIVELY passes (so QA affirmatively saw no mannequin), we
+      // keep the cleaner render and badge it instead of routing to review.
+      // A null QA never downgrades — that path stays fail-closed.
+      const qaOk = qa && qa.pass === true;
+      if (qaOk && !formResult.suspect) break;
+      if (qaOk && formResult.suspect && attempt >= 2) { row._formBadge = true; break; }
       if (attempt < ARCHIVE_QA_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500));
     }
 
-    const passed   = !qa || qa.pass;
+    // v1.14 — fail-closed verdict. done ONLY when QA positively passed, no
+    // unresolved residual form, and classification succeeded.
+    const qaOk       = qa && qa.pass === true;
+    row._formCheck   = !!(formResult.suspect && !row._formBadge);
+    const passed     = qaOk && !row._formCheck && !row._classifyFailed;
     const baseName = stripExt(buildOutputFilename(row));   // "<base> - GM"
     const outName  = passed ? `${baseName}.png` : `${baseName} - REVIEW.png`;
     await saveOutput(state.folders.output, outName, aFinal || aBlob);
 
+    if (row.outObjectURL) URL.revokeObjectURL(row.outObjectURL);   // v1.15 — no leak on re-renders
     row.outFile      = outName;
     row.outObjectURL = URL.createObjectURL(aFinal || aBlob);
     row._stepLabel   = null;
 
     if (passed) {
       row.status   = 'done';
-      row.qaNote   = null;
+      row.qaNote   = row._formBadge ? 'Check: form-gate flagged, QA passed' : null;   // v1.15 badge
       row.qaIssues = null;
     } else {
       row.status   = 'needs-review';
-      row.qaIssues = qa.issues || [];
-      row.qaNote   = qa.reason || (qa.issues || []).join(', ') || 'render rules not met';
+      row.qaIssues = (qa && qa.issues) || (row._formCheck ? ['mannequin'] : []);
+      row.qaNote   =
+        !qa                    ? 'QA not verified — Claude unavailable (fail-closed)' :
+        row._formCheck         ? (formResult.reason || 'possible residual form') :
+        row._classifyFailed    ? 'garment type not auto-detected — verify' :
+        (qa.reason || (qa.issues || []).join(', ') || 'render rules not met');
     }
     return;
   }
@@ -2587,14 +3072,33 @@ async function renderRow(row) {
   if (!base) {
     row._stepLabel = 'Pass 1 — base render…'; renderTable();
     const basePrompt = buildRenderAsIsPrompt(row, mannequin, garmentType);
-    const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
-    const baseRaw   = await removeBg(b64, bMime);
-    // v1.11 — strip any dark/shaded border blob before deriving the silhouette
-    // ceiling, so Pass 2 isn't anchored to an artifact-inflated boundary.
-    const baseBlob  = await trimBorderArtifacts(baseRaw) || baseRaw;
+
+    // v1.14 — the base is shared across ALL colorways of this style, so a
+    // residual form here would poison every colorway. Detect it deterministically
+    // and re-roll ONCE (RENDER_RULES §4.3) before caching. Keep the cleaner base.
+    // v1.15 — CRITICAL fix: never cache a null base. removeBg can resolve null
+    // (image-decode failure); the fallback is the raw Gemini render, and if even
+    // that is unavailable we THROW so the row errors instead of poisoning the
+    // cache for every colorway of this style.
+    let baseBlob = null, baseForm = { suspect: true }, lastRawB64 = null;
+    for (let bAttempt = 1; bAttempt <= 2; bAttempt++) {
+      if (bAttempt > 1) { row._stepLabel = 'Pass 1 — form re-roll…'; renderTable(); }
+      const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
+      lastRawB64 = b64;
+      const baseRaw = await removeBg(b64, bMime);
+      // v1.11 — strip any dark/shaded border blob before deriving the silhouette.
+      const cand = await trimBorderArtifacts(baseRaw) || baseRaw;
+      const form = await detectResidualForm(cand);
+      if (!form.suspect) { baseBlob = cand; baseForm = form; break; }
+      // keep the latest as the "cleaner" fallback if the re-roll also fails
+      baseBlob = cand; baseForm = form;
+    }
+    if (baseForm.suspect) row._formCheck = true;   // surfaced on the row in Pass 2 verdict
+
     // Extract silhouette from Pass 1 for use as prior-alpha ceiling in Pass 2
     const silhouette = await extractSilhouette(baseBlob);
-    const baseB64   = baseBlob ? await blobToBase64(baseBlob) : b64;
+    const baseB64   = baseBlob ? await blobToBase64(baseBlob) : lastRawB64;
+    if (!baseB64) throw new Error('Pass 1 produced no usable base render');
     base = { base64: baseB64, mimeType: 'image/png', silhouette };
     state.baseRenders.set(cacheKey, base);
   }
@@ -2604,37 +3108,95 @@ async function renderRow(row) {
     hex: '#888888', rgb: '136,136,136', pantone: 'Cool Gray 8 C', descriptor: 'medium gray'
   };
 
-  row._stepLabel = 'Pass 2 — building color prompt…'; renderTable();
-  // v1.12 — lead with the operator's per-row edit instruction (if any)
-  const colorPrompt = userEditCorrective(row) + (await buildGeminiPrompt(row, colorCtx));
+  // v1.14 — Manifest QA loop. Previously Manifest shipped whatever Gemini
+  // returned as "done" with ZERO render-rule verification. Now every colorway
+  // is verified (render-only QA — the color legitimately changed vs. the
+  // original, so we do NOT pass the source photo as a color reference; color
+  // fidelity is enforced separately by enforceEyedropColor). On failure we
+  // re-roll with a problem-naming corrective; a render that never passes is
+  // saved under ' - REVIEW' and flagged needs-review — never silently shipped.
+  let finalBlob = null, lockedBlob = null, qa = null, formResult = { suspect: false };
+  row._formBadge = false;   // v1.15 — fresh verdict per render
+  for (let attempt = 1; attempt <= MANIFEST_QA_MAX_ATTEMPTS; attempt++) {
+    const retrying = attempt > 1;
+    row._stepLabel = retrying ? `Pass 2 — QA retry ${attempt}/${MANIFEST_QA_MAX_ATTEMPTS}…`
+                              : 'Pass 2 — building color prompt…';
+    renderTable();
 
-  row._stepLabel = 'Pass 2 — rendering color…'; renderTable();
-  const { base64, mimeType } = await callGemini(colorPrompt, base.base64, base.mimeType, { mannequin, garmentType });
+    // v1.12 — lead with the operator's per-row edit instruction (if any).
+    // v1.14 — on a retry, prepend the QA/form corrective ahead of it.
+    const corrective  = retrying ? buildQaCorrective(
+        { issues: [ ...((qa && qa.issues) || []), ...(formResult.suspect ? ['mannequin'] : []) ] }) : '';
+    const colorPrompt = corrective + userEditCorrective(row) + (await buildGeminiPrompt(row, colorCtx));
 
-  row._stepLabel = 'Removing background…'; renderTable();
-  const rawBlob = await removeBg(base64, mimeType);
+    row._stepLabel = 'Pass 2 — rendering color…'; renderTable();
+    const { base64, mimeType } = await callGemini(colorPrompt, base.base64, base.mimeType, { mannequin, garmentType });
 
-  // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
-  row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
-  const ceiledBlob = await applyAlphaCeiling(rawBlob, base.silhouette);
+    row._stepLabel = 'Removing background…'; renderTable();
+    const rawBlob = await removeBg(base64, mimeType);
 
-  // LAB color lock — anchor rendered color to chip-sampled hex
-  row._stepLabel = 'Locking color to chip…'; renderTable();
-  const lockedBlob = row.sampledHex
-    ? await enforceEyedropColor(ceiledBlob || rawBlob, row.sampledHex)
-    : (ceiledBlob || rawBlob);
+    // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
+    row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
+    const ceiledBlob = await applyAlphaCeiling(rawBlob, base.silhouette);
 
-  // Resize to standard 1200×1600 (3:4) output
-  row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
-  const finalBlob = await resizeToStandard(lockedBlob);
+    // LAB color lock — anchor rendered color to chip-sampled hex
+    row._stepLabel = 'Locking color to chip…'; renderTable();
+    lockedBlob = row.sampledHex
+      ? await enforceEyedropColor(ceiledBlob || rawBlob, row.sampledHex)
+      : (ceiledBlob || rawBlob);
 
-  const filename = buildOutputFilename(row);
-  await saveOutput(state.folders.output, filename, finalBlob || lockedBlob);
+    // Resize to standard 1200×1600 (3:4) output
+    row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
+    finalBlob = await resizeToStandard(lockedBlob);
 
-  row.status       = 'done';
-  row.outFile      = filename;
+    // v1.14 — deterministic residual-form gate + fail-closed vision QA.
+    row._stepLabel = 'Form-gate scan…'; renderTable();
+    formResult = await detectResidualForm(finalBlob || lockedBlob);
+
+    row._stepLabel = `Quality check ${attempt}/${MANIFEST_QA_MAX_ATTEMPTS}…`; renderTable();
+    qa = await qaCheckRender(finalBlob || lockedBlob);   // render-only (recolor)
+
+    const qaOk = qa && qa.pass === true;
+    if (qaOk && !formResult.suspect) break;
+    // v1.15 — QA-agreement downgrade (RENDER_RULES §4.3): after the re-roll,
+    // Pass-2 form suspicion with a POSITIVE QA pass is badged, not review-routed.
+    // (Pass-1 base suspicion — row._formCheck — is NOT downgraded: the base is
+    // never QA'd and taints every colorway; it stays review until re-rolled.)
+    if (qaOk && formResult.suspect && attempt >= 2) { row._formBadge = true; break; }
+    if (attempt < MANIFEST_QA_MAX_ATTEMPTS) await new Promise(r => setTimeout(r, 1500));
+  }
+
+  // v1.14 — fail-closed verdict (mirrors Archive). A Pass-1 form-check carries
+  // through here too, since it taints every colorway of this base.
+  const qaOk     = qa && qa.pass === true;
+  const formBad  = (formResult.suspect && !row._formBadge) || row._formCheck;
+  const passed   = qaOk && !formBad;
+
+  const cleanName = buildOutputFilename(row);            // "Style - Color - Code.png"
+  const outName   = passed ? cleanName
+                           : stripExt(cleanName) + ' - REVIEW.png';
+  await saveOutput(state.folders.output, outName, finalBlob || lockedBlob);
+
+  if (row.outObjectURL) URL.revokeObjectURL(row.outObjectURL);   // v1.15 — no leak on re-renders
+  row.outFile      = outName;
   row.outObjectURL = URL.createObjectURL(finalBlob || lockedBlob);
   row._stepLabel   = null;
+
+  if (passed) {
+    row.status   = 'done';
+    row.qaNote   = row._formBadge ? 'Check: form-gate flagged, QA passed' : null;   // v1.15 badge
+    row.qaIssues = null;
+    row._formCheck = false;
+  } else {
+    row.status   = 'needs-review';
+    row.qaIssues = (qa && qa.issues) || (formBad ? ['mannequin'] : []);
+    row.qaNote   =
+      !qa                ? 'QA not verified — Claude unavailable (fail-closed)' :
+      row._formCheck     ? 'base render form-flagged — re-run to re-roll the base' :
+      formBad            ? (formResult.reason || 'possible residual form') :
+      (qa.reason || (qa.issues || []).join(', ') || 'render rules not met');
+    row._formCheck = formBad;   // persists so a re-run knows to evict the base
+  }
 }
 
 async function renderRowWithRetry(row) {
@@ -2664,7 +3226,16 @@ document.addEventListener('DOMContentLoaded', () => {
   // v1.7 — restore last-used mode (manifest | archive)
   const savedMode = localStorage.getItem('svs_mode') || 'manifest';
   if (savedMode === 'archive') setMode('archive');
-  // Ready for real inputs — click Demo in the setup bar to preview UI
+
+  // v1.14 — headless / warm-start support. If ?autorun=1, restore previously
+  // granted folders and start an Archive batch automatically (Cowork path).
+  // Otherwise, best-effort restore folders so a manual reload keeps its pickers.
+  const autorun = new URLSearchParams(location.search).get('autorun') === '1';
+  if (autorun) {
+    maybeAutorun();
+  } else {
+    restoreFolders().then(() => { syncProcessBtn(); }).catch(() => {});
+  }
 });
 
 function loadDemoData() {
@@ -2758,6 +3329,7 @@ async function pickFolder(type) {
     state.folders[type] = dh;
     state.inputs[type] = true;
     updateInputSlot(type, dh.name + '/');
+    idbSaveHandle(type, dh);   // v1.14 — remember for ?autorun=1 headless re-launch
 
     if (type === 'raw' || type === 'chip') {
       setBatchStatus('Indexing ' + dh.name + '…');
@@ -3412,12 +3984,32 @@ function rerunSelected() {
 // Scoped batch over a fixed list of rows. Mirrors startBatch's progress +
 // Pause wiring so the Process All button doubles as Pause during a re-run.
 async function runRerun(rows, label) {
-  state.batchRunning   = true;
+  // v1.15 — re-entry guard BEFORE the preflight await (same race as startBatch)
+  if (state.batchRunning) return;
+  state.batchRunning = true;
+
+  // v1.14 — same preflight floor as a full batch: no re-render spend without Claude.
+  if (!(await ensureClaudeReady('rerun'))) {
+    state.batchRunning = false;
+    await writeAbortSummary('preflight blocked — re-run never started');
+    return;
+  }
+
   state.pauseRequested = false;
+  state.circuitTripped = false;
+  await writeRunLock({ mode: state.archiveMode ? 'archive' : 'manifest', rerun: label, toRender: rows.length });
 
   // Clear the idempotency skip-reason so these rows actually re-render even
   // if a (passing) output file already exists.
-  rows.forEach(r => { r._skipReason = null; });
+  // v1.15 — a form-flagged Manifest row is deadlocked on its cached suspect
+  // base; evict the base so Pass 1 re-rolls fresh and the row is curable.
+  rows.forEach(r => {
+    r._skipReason = null;
+    if (r._formCheck && !r.archive) {
+      state.baseRenders.delete((r.rawFile || r.style).toLowerCase());
+      r._formCheck = false;
+    }
+  });
 
   const procBtn = document.getElementById('btn-process');
   procBtn.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none"><rect x="1.5" y="1.5" width="3.5" height="9" rx="1" fill="currentColor"/><rect x="7" y="1.5" width="3.5" height="9" rx="1" fill="currentColor"/></svg> Pause';
@@ -3428,7 +4020,7 @@ async function runRerun(rows, label) {
   document.getElementById('progress-bar').classList.remove('done');
   document.getElementById('progress-bar').style.width = '0%';
 
-  let completed = 0;
+  let completed = 0, consecutiveFail = 0;
   for (let i = 0; i < rows.length; i++) {
     if (state.pauseRequested) {
       stopBatch();
@@ -3442,6 +4034,14 @@ async function runRerun(rows, label) {
     document.getElementById('progress-bar').style.width =
       Math.round(((i + 1) / rows.length) * 100) + '%';
     renderTable(); updateCounts();
+
+    // v1.14 — circuit breaker (same rationale as the full batch)
+    consecutiveFail = (rows[i].status === 'done') ? 0 : consecutiveFail + 1;
+    if (CIRCUIT_BREAKER_LIMIT > 0 && consecutiveFail >= CIRCUIT_BREAKER_LIMIT) {
+      state.circuitTripped = true;
+      showToast(`Circuit breaker — ${consecutiveFail} re-runs in a row didn't pass. Halted.`, 'error');
+      break;
+    }
   }
 
   // Tally outcomes for just this re-run set
@@ -3460,10 +4060,15 @@ async function runRerun(rows, label) {
 
   const summary = `Re-run done — ${nowDone} passed`
     + (stillReview ? `, ${stillReview} still need review` : '')
-    + (stillError ? `, ${stillError} still failed` : '');
+    + (stillError ? `, ${stillError} still failed` : '')
+    + (state.circuitTripped ? ' [HALTED]' : '');
   setBatchStatus(summary);
   renderTable(); updateCounts();
-  showToast(summary, (stillError || stillReview) ? 'error' : 'success');
+  showToast(summary, (stillError || stillReview || state.circuitTripped) ? 'error' : 'success');
+
+  // v1.14 — refresh the machine-readable summary + clear the lock
+  writeRunSummary(state.circuitTripped ? 'rerun circuit halt' : 'rerun complete');
+  clearRunLock();
 }
 
 /* ════════════════════════════════════════════════════════════════
@@ -3486,6 +4091,24 @@ async function markAlreadyRendered(eligible) {
     outputIndex = await buildFileIndex(state.folders.output);
   } catch (_) { return 0; }
 
+  // v1.15 — REVIEW-file janitor: a re-run that passes writes the clean name
+  // and used to leave the old ' - REVIEW.png' behind. Sweep any REVIEW file
+  // whose clean twin exists (both Archive '- GM - REVIEW' and Manifest names).
+  let swept = 0;
+  for (const [lname] of outputIndex) {
+    if (!lname.endsWith(' - review.png')) continue;
+    const cleanTwin = lname.replace(/ - review\.png$/, '.png');
+    if (outputIndex.has(cleanTwin)) {
+      try {
+        // removeEntry needs the ORIGINAL casing — re-resolve via the handle map
+        const h = outputIndex.get(lname);
+        await state.folders.output.removeEntry(h.name);
+        swept++;
+      } catch (_) {}
+    }
+  }
+  if (swept) showToast(`Cleaned ${swept} stale REVIEW file${swept > 1 ? 's' : ''}`, 'success');
+
   let skipped = 0;
   for (const row of eligible) {
     const filename = buildOutputFilename(row);
@@ -3500,9 +4123,15 @@ async function markAlreadyRendered(eligible) {
 }
 
 async function startBatch() {
+  // v1.15 — RE-ENTRY GUARD: claim the flag BEFORE any await. The preflight and
+  // folder-scan awaits previously left a window where a double-click (or an
+  // impatient agent) launched two concurrent batch loops.
+  if (state.batchRunning) return;
+  state.batchRunning = true;
+
   const eligible = state.rows.filter(r => ['sampled','matched','needs-review'].includes(r.status));
-  if (!eligible.length) { showToast('No rows ready — run matching first'); return; }
-  if (!state.folders.output) { showToast('Select Output folder before rendering', 'error'); return; }
+  if (!eligible.length) { state.batchRunning = false; showToast('No rows ready — run matching first'); return; }
+  if (!state.folders.output) { state.batchRunning = false; showToast('Select Output folder before rendering', 'error'); return; }
 
   // Pre-flight: skip rows whose output file already exists
   setBatchStatus('Checking for existing renders…');
@@ -3515,10 +4144,25 @@ async function startBatch() {
 
   const toRender = eligible.filter(r => r.status !== 'done');
   if (!toRender.length) {
+    state.batchRunning = false;
     setBatchStatus(`All ${eligible.length} rows already rendered — nothing to do`);
     renderTable(); updateCounts();
     return;
   }
+
+  // v1.14 — PREFLIGHT GATE: one text-only Claude call before ANY Gemini spend.
+  // In 'block' mode a failure aborts here, so a depleted balance can never let
+  // unguarded renders ship. v1.15 — a blocked preflight writes an abort summary
+  // so a headless Cowork run escalates instead of hanging.
+  if (!(await ensureClaudeReady('batch'))) {
+    state.batchRunning = false;
+    await writeAbortSummary('preflight blocked — batch never started');
+    return;
+  }
+
+  // v1.14 — run lock + circuit-breaker reset (machine-visible run state)
+  state.circuitTripped = false;
+  await writeRunLock({ mode: state.archiveMode ? 'archive' : 'manifest', toRender: toRender.length });
 
   // Count new base renders needed (Manifest Mode only — Archive is single-pass)
   const nonArchive = toRender.filter(r => !r.archive);
@@ -3526,7 +4170,7 @@ async function startBatch() {
   const newBases   = [...uniqueRaws].filter(k => !state.baseRenders.has(k)).length;
   const totalCalls = toRender.length + newBases;
 
-  state.batchRunning   = true;
+  // batchRunning already claimed at the top (v1.15 re-entry guard)
   state.pauseRequested = false;
 
   const btn = document.getElementById('btn-process');
@@ -3540,6 +4184,7 @@ async function startBatch() {
     await new Promise(r => setTimeout(r, 2000));
   }
 
+  let consecErr = 0, consecReview = 0;
   for (let i = 0; i < toRender.length; i++) {
     if (state.pauseRequested) { stopBatch(); return; }
     const done   = state.rows.filter(r => r.status === 'done').length;
@@ -3549,6 +4194,25 @@ async function startBatch() {
     document.getElementById('progress-bar').style.width =
       Math.round(((i + 1) / toRender.length) * 100) + '%';
     renderTable(); updateCounts();
+
+    // v1.15 — SPLIT CIRCUIT BREAKER: consecutive hard errors indicate a
+    // systemic fault (dead key, wrong model) and halt fast; consecutive
+    // needs-review can legitimately happen on a run of hard legacy images,
+    // so it gets a higher limit. A clean 'done' resets both counters.
+    const st = toRender[i].status;
+    if (st === 'done')              { consecErr = 0; consecReview = 0; }
+    else if (st === 'error')        { consecErr++;   consecReview = 0; }
+    else if (st === 'needs-review') { consecReview++; consecErr = 0; }
+    if (CIRCUIT_BREAKER_LIMIT > 0 && consecErr >= CIRCUIT_BREAKER_LIMIT) {
+      state.circuitTripped = true;
+      showToast(`Circuit breaker — ${consecErr} errors in a row. Batch halted.`, 'error');
+      break;
+    }
+    if (CIRCUIT_BREAKER_REVIEW_LIMIT > 0 && consecReview >= CIRCUIT_BREAKER_REVIEW_LIMIT) {
+      state.circuitTripped = true;
+      showToast(`Circuit breaker — ${consecReview} review-flags in a row. Batch halted.`, 'error');
+      break;
+    }
   }
   finishBatch();
 }
@@ -3560,6 +4224,7 @@ function stopBatch() {
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><polygon points="3,1 13,7 3,13" fill="currentColor"/></svg> Process All';
   btn.classList.remove('running');
   setBatchStatus('Paused — click Process All to resume');
+  clearRunLock();   // v1.14 — batch no longer in flight
 }
 
 function finishBatch() {
@@ -3567,14 +4232,23 @@ function finishBatch() {
   const btn = document.getElementById('btn-process');
   btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" fill="none"><polygon points="3,1 13,7 3,13" fill="currentColor"/></svg> Process All';
   btn.classList.remove('running');
-  const done   = state.rows.filter(r => r.status === 'done').length;
+  const done    = state.rows.filter(r => r.status === 'done').length;
+  const skipped = state.rows.filter(r => r._skipReason).length;   // v1.15 — skipped rows are 'done' too
+  const rendered = done - skipped;                                 // fixes the 88-vs-86 discrepancy
   const errors = state.rows.filter(r => r.status === 'error').length;
   const review = state.rows.filter(r => r.status === 'needs-review').length;
   document.getElementById('progress-bar').classList.add('done');
-  setBatchStatus(`Batch complete — ${done} done${review ? `, ${review} need review` : ''}, ${errors} error${errors !== 1 ? 's' : ''}`);
+  const halted = state.circuitTripped ? ' [HALTED by circuit breaker]' : '';
+  setBatchStatus(`Batch complete — ${rendered} rendered${skipped ? ` (+${skipped} skipped)` : ''}${review ? `, ${review} need review` : ''}, ${errors} error${errors !== 1 ? 's' : ''}${halted}`);
   renderTable(); updateCounts();
-  showToast(`Batch complete: ${done} rendered${review ? `, ${review} flagged for review` : ''}, ${errors} failed`,
-            (errors || review) ? 'error' : 'success');
+  showToast(`Batch complete: ${rendered} rendered${skipped ? `, ${skipped} skipped` : ''}${review ? `, ${review} flagged for review` : ''}, ${errors} failed${halted}`,
+            (errors || review || state.circuitTripped) ? 'error' : 'success');
+
+  // v1.14 — write the machine-readable summary + clear the run lock so Cowork
+  // knows the batch finished and whether it is SAFE TO DISTRIBUTE (all_verified).
+  writeRunSummary(state.circuitTripped ? 'circuit breaker halt' : 'batch complete')
+    .then(s => { if (s && !s.all_verified) console.warn('[SVL] run NOT safe to distribute:', s.counts); });
+  clearRunLock();
 }
 
 function buildOutputFilename(row) {
@@ -3612,6 +4286,11 @@ async function rematch() {
    DETAIL DRAWER
 ════════════════════════════════════════════════════════════════ */
 function openDrawer(idx) {
+  // v1.15 — don't blow away the operator's keystrokes: if the per-row edit
+  // field has focus (they're typing a corrective mid-batch), skip this refresh.
+  const ae = document.activeElement;
+  if (ae && ae.id === 'd-edit' && state.activeRowIdx === idx) return;
+
   state.activeRowIdx = idx;
   const r = state.rows[idx];
   if (!r) return;
@@ -3724,9 +4403,9 @@ function closeDrawer() {
   renderTable();
 }
 
-function fakeOverride() { showToast('In Phase 3: click anywhere on the chip to pick a custom color'); }
-function fakeRerender() { rerenderActiveRow(); }
-function fakeRetry()    { rerenderActiveRow(); }
+// v1.15 — Override Color is disabled in the UI until Phase 3 (custom chip picker)
+function rerenderRow() { rerenderActiveRow(); }   // v1.15 — renamed from fakeRerender (it is real)
+function retryRow()    { rerenderActiveRow(); }   // v1.15 — renamed from fakeRetry
 
 // v1.12 — store the per-row edit instruction live as the operator types.
 // Picked up by renderRow (via userEditCorrective) on the next re-render —
@@ -3746,6 +4425,12 @@ async function rerenderActiveRow() {
   if (!r.rawFileHandle)   { showToast('Row has no source image attached', 'error'); return; }
   if (!state.folders.output) { showToast('Select Output folder first', 'error'); return; }
   r._skipReason = null;
+  // v1.15 — form-flagged Manifest rows: evict the suspect cached base so the
+  // single-row re-render actually re-rolls Pass 1 instead of deadlocking.
+  if (r._formCheck && !r.archive) {
+    state.baseRenders.delete((r.rawFile || r.style).toLowerCase());
+    r._formCheck = false;
+  }
   await renderRowWithRetry(r);
   renderTable(); updateCounts();
   if (state.activeRowIdx === r.idx) openDrawer(r.idx); // refresh drawer
@@ -3754,7 +4439,7 @@ async function rerenderActiveRow() {
             :                                `Re-render failed: ${r.error}`;
   showToast(msg, r.status === 'done' ? 'success' : 'error');
 }
-function fakeOpen() {
+function downloadRender() {   // v1.15 — renamed from fakeOpen (it downloads the render)
   const r = state.rows[state.activeRowIdx];
   if (!r || !r.outObjectURL) return;
   const a = document.createElement('a');
