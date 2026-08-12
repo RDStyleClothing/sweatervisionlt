@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light</title>
+<title>SweaterVision Light v1.20</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -52,18 +52,11 @@ html, body {
 
 /* ─── Layout Shell ──────────────────────────────────────────────────────── */
 #app {
-  /* v1.19 — was grid with 4 tracks (auto auto 3px 1fr) but #app has FIVE
-     children since the rerun bar landed in v1.10. When the bar showed, it
-     absorbed the 1fr track (huge dead zone) and the worklist fell into an
-     implicit auto row pinned to the bottom. Flex column is robust to the
-     bar toggling: every strip is content-sized, worklist takes the rest. */
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-rows: auto auto 3px 1fr;
   height: 100vh;
   overflow: hidden;
 }
-#app > header, #app > #setup-bar, #app > .progress-wrap, #app > .rerun-bar { flex-shrink: 0; }
-#app > #worklist-wrap { flex: 1; min-height: 0; }
 
 /* ─── Header ─────────────────────────────────────────────────────────────── */
 #header {
@@ -325,27 +318,6 @@ html, body {
 .row-pick {
   cursor: pointer; margin-right: 6px; vertical-align: middle;
   width: 14px; height: 14px;
-}
-/* v1.19 — inline per-row fix instruction (Review/Errors view). Same
-   row._userEdit as the drawer textarea; injected via userEditCorrective(). */
-.row-edit {
-  display: block;
-  margin-top: 6px;
-  width: 220px; max-width: 100%;
-  padding: 5px 7px;
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: #fff;
-  font-family: var(--font-ui);
-  font-size: 10px; line-height: 1.45; color: var(--ink);
-  resize: vertical;
-  cursor: text;
-}
-.row-edit::placeholder { color: var(--ink-3); }
-.row-edit:focus {
-  outline: none;
-  border-color: var(--review);
-  box-shadow: 0 0 0 2px rgba(8,145,178,.12);
 }
 
 /* ─── Worklist ───────────────────────────────────────────────────────────── */
@@ -892,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge">v1.19</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.0">v1.20</span>
 
     <div class="header-spacer"></div>
 
@@ -1206,7 +1178,7 @@ html, body {
           <input class="form-input" id="input-gemini-model" type="text" placeholder="gemini-2.5-flash-image" oninput="saveKeys()" style="font-family:var(--font-mono);font-size:11px;flex:1" />
           <button class="btn-sm" onclick="detectGeminiModels()" id="btn-detect" style="white-space:nowrap;flex-shrink:0">Detect →</button>
         </div>
-        <span class="form-hint">Paste model string from v5.4, or click Detect to list models on your key</span>
+        <span class="form-hint">Paste model string from v5.4, or click Detect to list models on your key. Pinned versions only — never "-latest" (RENDER_RULES §3). Migration to gemini-3.1-flash-image required before 2026-10-02.</span>
         <div id="model-list" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden">
           <div style="padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;gap:6px;align-items:center">
             <input id="model-filter" type="text" placeholder="Filter… (try: flash, imagen)" oninput="filterModels(this.value)"
@@ -1247,7 +1219,10 @@ const state = {
   folders: { raw: null, chip: null, output: null },
   rawFileIndex:  new Map(),
   chipFileIndex: new Map(),
+  rawTreeIndex:  null,      // v1.20 — recursive Originals index: relPath → {handle, relDir, name}
+  ingestSkipped: [],        // v1.20 — subfolder files skipped as chip/reference (reported, never silent)
   baseRenders:   new Map(), // rawFile.toLowerCase() → {base64, mimeType} — shared across colorways
+  decisionLog:   [],        // v1.19 — RENDER_RULES §4.5 audit: one record per render
 };
 
 // ── Demo rows (Phase 1 fake data showing all states) ─────────────────────
@@ -1468,14 +1443,17 @@ function buildColorContext(hex) {
 ════════════════════════════════════════════════════════════════ */
 const CLAUDE_MODEL = 'claude-sonnet-4-6';
 // Gemini model is set in Settings (⚙) and stored in localStorage as svs_gemini_model
-// Default: gemini-2.5-flash-image — current Gemini image generation model (2.0-flash shut down June 2026)
+// Default: gemini-2.5-flash-image — current pinned Gemini image model (RENDER_RULES §3:
+// pinned versions only, never "-latest"; migration to gemini-3.1-flash-image required
+// before the 2026-10-02 shutdown, gated by the benchmark harness).
 
 /* ════════════════════════════════════════════════════════════════
    v1.14 CONFIG — fail-closed hardening, residual-form gate, autonomy
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.19';   // v1.19 — fixed Review/Errors view layout (rerun bar had no grid track since v1.10 — #app now flex column, worklist reclaims full height); inline per-row fix-instruction field in Review/Errors view, two-way synced with the drawer edit (same row._userEdit → userEditCorrective). v1.18 — per-row garment type from raw filename keywords (pant/jean/skirt → bottom; top/sweater/shirt/blouse → top); precedence Excel > filename > vision > global. v1.17 — §7.5 achromatic white-peel 2nd pass in all render chains; image inspector (hover preview + click lightbox) on original/chip/render thumbnails. v1.16 — RENDER_RULES v1.2 compliance.
+const SVL_VERSION = 'v1.20';   // v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const RULES_VERSION = '1.0';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
 //   'block' — a failed preflight hard-stops the batch (default; "no exceptions")
@@ -1494,7 +1472,7 @@ const CIRCUIT_BREAKER_REVIEW_LIMIT = 10;  // consecutive 'needs-review' rows
 // failure is a base problem, surfaced as needs-review rather than re-rolled forever.
 const MANIFEST_QA_MAX_ATTEMPTS = 2;
 
-// Residual-form gate (RENDER_RULES §4.3) — deterministic detection of a
+// Residual-form gate (RENDER_RULES §4.2) — deterministic detection of a
 // leftover neck/head/bust "stalk" rising above the garment shoulders.
 //   STALK_FRAC        — a top band narrower than this fraction of the garment's
 //                       max width counts as a "stalk" (neck post / head).
@@ -1514,6 +1492,25 @@ const RF_STALK_FRAC     = 0.20;
 const RF_MIN_STALK_FRAC = 0.08;
 const RF_SHOULDER_FRAC  = 0.60;
 const RESIDUAL_FORM_MODE = 'review';
+
+// ── v1.19 Frame Lock constants (RENDER_RULES §4.4, canonical) ──────
+// Garment scale/position normalization on the delivered canvas. Applied to
+// every Lite render (all Lite renders are front-view Render mode). All
+// failure paths return applied:false → plain 3:4 normalize fallback — the
+// step is never destructive.
+const FL_CANVAS_W      = 1200;   // canvasW
+const FL_CANVAS_H      = 1600;   // canvasH
+const FL_ANCHOR_Y      = 240;    // garment top edge at y=240 (15% down)
+const FL_TOP_WIDTH     = 660;    // TOPS: shoulder span target (px)
+const FL_BOTTOM_WIDTH  = 480;    // BOTTOMS: waistband target (px)
+const FL_MAX_UPSCALE   = 1.5;    // clamp + flag, never blur
+const FL_SIDE_MARGIN   = 60;
+const FL_BOTTOM_MARGIN = 80;
+const FL_TOP_BAND_FRAC = 0.15;   // shoulder span = widest row in top 15% of garment bbox
+// Documented v1 limitations (RENDER_RULES §4.4): anchor is garment top edge,
+// not true shoulder line (cross-style vertical drift by collar height);
+// hood-up garments over-scale (the hood wins the top-15% band). Fit guards
+// prevent clipping in both cases.
 
 // v1.15 — garment-aware target noun. 'sweater' is the v5.4-parity noun and
 // stays the default for tops (the v5.4 case); bottoms get a neutral noun so
@@ -1578,6 +1575,75 @@ async function saveOutput(dirHandle, filename, blob) {
   const w  = await fh.createWritable();
   await w.write(blob);
   await w.close();
+}
+
+/* ════════════════════════════════════════════════════════════════
+   v1.20 — FOLDER-TREE INGEST (Archive Mode subfolder support)
+   ════════════════════════════════════════════════════════════════
+   Archive Mode now scans the Originals folder RECURSIVELY and mirrors the
+   subfolder structure into the Output folder. Root-level flat folders keep
+   the exact v1.19 behavior. All helpers are non-destructive — degenerate
+   cases fall back to the flat path. */
+const TREE_MAX_DEPTH = 8;
+
+// Garment-shot filter for SUBFOLDER files only: style folders commonly mix
+// garment shots with color-chip/reference images ("SHARP GREEN.jpg",
+// "Y328 WINTER WHITE.jpg"). A garment shot starts with a style number
+// (e.g. 78S2079). Skipped files are recorded in state.ingestSkipped and
+// reported in the run summary — never silently dropped.
+const ARCHIVE_STYLE_PREFIX_RE = /^\s*\d{2}[a-z]{1,3}\d{2,}/i;
+
+// Recursive Originals index: relPath(lowercase) → { handle, relDir, name }.
+// Skips folders starting with "_" and the granted Output folder if it is
+// nested inside the Originals tree (prevents re-ingesting renders).
+async function buildFileTreeIndex(dirHandle) {
+  const index = new Map();
+  async function walk(dh, relDir, depth) {
+    for await (const [name, handle] of dh.entries()) {
+      if (handle.kind === 'file') {
+        const rel = relDir ? relDir + '/' + name : name;
+        index.set(rel.toLowerCase(), { handle, relDir, name });
+      } else if (handle.kind === 'directory' && depth < TREE_MAX_DEPTH) {
+        if (name.startsWith('_')) continue;
+        try {
+          if (state.folders.output && await handle.isSameEntry(state.folders.output)) continue;
+        } catch (_) {}
+        await walk(handle, relDir ? relDir + '/' + name : name, depth + 1);
+      }
+    }
+  }
+  await walk(dirHandle, '', 0);
+  return index;
+}
+
+// Resolve (creating as needed) the Output subfolder mirroring relDir.
+async function getOutputDirHandle(relDir, create = true) {
+  let dh = state.folders.output;
+  if (!relDir) return dh;
+  for (const seg of relDir.split('/')) {
+    if (!seg) continue;
+    dh = await dh.getDirectoryHandle(seg, { create });
+  }
+  return dh;
+}
+
+// Recursive index of the OUTPUT tree: relPath(lowercase) → { dirHandle, name }.
+// Used by the idempotency scan and the REVIEW janitor so both work across
+// mirrored subfolders.
+async function buildOutputTreeIndex() {
+  const index = new Map();
+  async function walk(dh, relDir, depth) {
+    for await (const [name, handle] of dh.entries()) {
+      if (handle.kind === 'file') {
+        const rel = relDir ? relDir + '/' + name : name;
+        index.set(rel.toLowerCase(), { dirHandle: dh, name });
+      } else if (handle.kind === 'directory' && depth < TREE_MAX_DEPTH) {
+        await walk(handle, relDir ? relDir + '/' + name : name, depth + 1);
+      }
+    }
+  }
+  await walk(state.folders.output, '', 0);
+  return index;
 }
 
 // ── Claude → precision Gemini prompt (v5.4 system prompt, exact copy) ────
@@ -1773,7 +1839,7 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
         res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(false) });
       } else if (errText.toLowerCase().includes('response modalities') || errText.toLowerCase().includes('does not support')) {
         // Model is text-only — give a clear fix instruction
-        throw new Error('Model "' + model + '" does not support image generation. Open Settings \u2192 Detect \u2192 select a green-dot model (gemini-2.5-flash-image).');
+        throw new Error('Model "' + model + '" does not support image generation. Open Settings → Detect → select a green-dot model (gemini-2.5-flash-image).');
       } else {
         throw new Error(`Gemini 400: ${errText}`);
       }
@@ -1803,8 +1869,9 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
 }
 
 // ── Background removal — v5.4 safe-zone algorithm ────────────────
-// Protects interior near-white pixels (white stripes, cream garments, etc.)
-// Only removes pixels reachable from image edges; interior is never eaten.
+// RENDER_RULES §4.1 key principle: only remove pixels reachable from the
+// image edges (edge-seeded flood fill). Interior pixels are NEVER removed
+// even if they match background color — protects white/cream/sage garments.
 function removeBg(base64, mimeType) {
   return new Promise(resolve => {
     const img = new Image();
@@ -1912,11 +1979,11 @@ function removeBg(base64, mimeType) {
       }
       for(let i=0;i<W*H;i++) d[i*4+3]=Math.round(alpha[i]*255);
 
-      // v1.16 — RENDER_RULES v1.2 §7.7 perimeter diagnostic: if >25% of the
-      // image perimeter is still highly opaque after extraction, the bg strip
-      // likely failed. Log a warning with the sampled bg color; deliberately
-      // do NOT auto-apply an aggressive strip (risk of eating dark pattern
-      // elements like plaid black squares).
+      // v1.16 — perimeter diagnostic: if >25% of the image perimeter is still
+      // highly opaque after extraction, the bg strip likely failed. Log a
+      // warning with the sampled bg color; deliberately do NOT auto-apply an
+      // aggressive strip (risk of eating dark pattern elements like plaid
+      // black squares).
       {
         let perim=0, opq=0;
         const chk=i=>{perim++;if(d[i*4+3]>200)opq++;};
@@ -2006,7 +2073,7 @@ function enforceEyedropColor(blob, targetHex) {
       const dB = tB - sumB / n;
 
       // Apply mean-LAB shift to every opaque pixel — full chroma anchor (a*, b*),
-      // 75% luminance anchor (L*) to preserve shading (RENDER_RULES v1.2 §3.4)
+      // 75% luminance anchor (L*) to preserve shading (RENDER_RULES 1.0 §4.3)
       for (let i = 0; i < W * H; i++) {
         const pi = i * 4;
         if (d[pi + 3] < 128) continue;
@@ -2028,8 +2095,8 @@ function enforceEyedropColor(blob, targetHex) {
 }
 
 // ── Canvas resize to standard 1200×1600 (3:4) ────────────────────────
-// Gemini may return varying resolutions even with imageConfig.aspectRatio.
-// This ensures every output is exactly 1200×1600 with transparent bg.
+// Plain 3:4 normalize — the Frame Lock fallback (RENDER_RULES §4.4: every
+// Frame Lock failure path returns applied:false and lands here).
 function resizeToStandard(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -2050,6 +2117,109 @@ function resizeToStandard(blob) {
     img.onerror = () => resolve(blob);
     img.src = URL.createObjectURL(blob);
   });
+}
+
+// ── v1.19 Frame Lock (RENDER_RULES §4.4 frameLockGarment) ────────────
+// Measures the alpha-mask bbox → anchor span (TOPS: widest row in the top
+// 15% of the garment bbox = shoulder span; BOTTOMS: waistband) → uniform
+// scale to the target width → garment TOP EDGE placed at y=240, horizontally
+// centered on a fresh 1200×1600 canvas. Never destructive: every failure
+// path ('empty-mask', 'no-alpha', 'mask-too-small', 'no-anchor-span',
+// 'bad-scale') resolves applied:false → caller falls back to plain 3:4
+// normalize. Upscale is clamped at 1.5× (clamped flag, never blur); fit
+// guards shrink instead of clipping (fitLimited flag).
+function frameLockGarment(blob, garmentType) {
+  return new Promise(resolve => {
+    const fail = reason => resolve({ blob: null, applied: false, reason, scale: null, clamped: false, fitLimited: false });
+    if (!blob) { fail('empty-mask'); return; }
+    const img = new Image();
+    const url = URL.createObjectURL(blob);
+    img.onload = () => {
+      const W = img.naturalWidth, H = img.naturalHeight;
+      const cv = document.createElement('canvas');
+      cv.width = W; cv.height = H;
+      const ctx = cv.getContext('2d', { willReadFrequently: true });
+      ctx.drawImage(img, 0, 0);
+      URL.revokeObjectURL(url);
+      let d;
+      try { d = ctx.getImageData(0, 0, W, H).data; } catch (_) { fail('no-alpha'); return; }
+
+      // Alpha-mask bounding box (alpha > 128)
+      let minX = W, minY = H, maxX = -1, maxY = -1, count = 0;
+      for (let y = 0; y < H; y++) {
+        const base = y * W * 4;
+        for (let x = 0; x < W; x++) {
+          if (d[base + x * 4 + 3] > 128) {
+            count++;
+            if (x < minX) minX = x; if (x > maxX) maxX = x;
+            if (y < minY) minY = y; if (y > maxY) maxY = y;
+          }
+        }
+      }
+      if (maxX < 0) { fail('empty-mask'); return; }
+      const bw = maxX - minX + 1, bh = maxY - minY + 1;
+      if (bw < 20 || bh < 20 || count < 400) { fail('mask-too-small'); return; }
+
+      // Anchor span — widest contiguous opaque run inside the top band of the
+      // garment bbox (topBandFrac). For bottoms this is the waistband.
+      const bandEnd = minY + Math.max(1, Math.round(bh * FL_TOP_BAND_FRAC));
+      let span = 0;
+      for (let y = minY; y < bandEnd; y++) {
+        let run = 0, best = 0;
+        const base = y * W * 4;
+        for (let x = minX; x <= maxX; x++) {
+          if (d[base + x * 4 + 3] > 128) { run++; if (run > best) best = run; }
+          else run = 0;
+        }
+        if (best > span) span = best;
+      }
+      if (span < 10) { fail('no-anchor-span'); return; }
+
+      const isBottom = (garmentType || 'top').toLowerCase() === 'bottom';
+      const targetW  = isBottom ? FL_BOTTOM_WIDTH : FL_TOP_WIDTH;
+      let scale = targetW / span;
+      let clamped = false, fitLimited = false;
+      if (!Number.isFinite(scale) || scale <= 0) { fail('bad-scale'); return; }
+      if (scale > FL_MAX_UPSCALE) { scale = FL_MAX_UPSCALE; clamped = true; }
+
+      // Fit guards — never clip: shrink further if the scaled bbox would break
+      // the side margins or run past the bottom margin.
+      const maxW = FL_CANVAS_W - 2 * FL_SIDE_MARGIN;
+      const maxH = FL_CANVAS_H - FL_ANCHOR_Y - FL_BOTTOM_MARGIN;
+      if (bw * scale > maxW) { scale = maxW / bw; fitLimited = true; }
+      if (bh * scale > maxH) { scale = maxH / bh; fitLimited = true; }
+      if (!Number.isFinite(scale) || scale <= 0) { fail('bad-scale'); return; }
+
+      const out = document.createElement('canvas');
+      out.width = FL_CANVAS_W; out.height = FL_CANVAS_H;
+      const octx = out.getContext('2d');
+      const dw = bw * scale, dh = bh * scale;
+      const dx = Math.round((FL_CANVAS_W - dw) / 2);
+      const dy = FL_ANCHOR_Y;   // garment top edge at anchorY
+      octx.drawImage(cv, minX, minY, bw, bh, dx, dy, dw, dh);
+      out.toBlob(b => {
+        if (!b) { fail('bad-scale'); return; }
+        resolve({ blob: b, applied: true, reason: null, scale: +scale.toFixed(4), clamped, fitLimited });
+      }, 'image/png');
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); fail('no-alpha'); };
+    img.src = url;
+  });
+}
+
+// Frame Lock wrapper — applies frameLockGarment, records the result on the
+// row for the §4.5 decision log, and falls back to plain 3:4 normalize on
+// any applied:false path (never destructive).
+async function frameLockOrNormalize(blob, garmentType, row) {
+  const r = await frameLockGarment(blob, garmentType);
+  if (r.applied) {
+    if (row) row._frameLock = { applied: true, scale: r.scale, clamped: r.clamped, fitLimited: r.fitLimited };
+    console.log('[frame-lock] applied', { scale: r.scale, clamped: r.clamped, fitLimited: r.fitLimited });
+    return r.blob;
+  }
+  if (row) row._frameLock = { applied: false, reason: r.reason };
+  console.warn('[frame-lock] fallback to plain normalize:', r.reason);
+  return await resizeToStandard(blob);
 }
 
 // ── Prior-alpha ceiling (v5.20) ───────────────────────────────────────
@@ -2359,9 +2529,9 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
 /* ════════════════════════════════════════════════════════════════
    v1.8 — ARCHIVE QA GATE + CLEANUP  (rule coverage widened in v1.9)
    gemini-2.5-flash-image does not reliably honor "remove the mannequin"
-   or "pure white background" in a single pass on hard inputs. These three
+   or "pure white background" in a single pass on hard inputs. These
    helpers (1) strip stray background fragments the keyer left behind,
-   (2) ask Claude vision whether the finished render meets the full v5.4
+   (2) ask Claude vision whether the finished render meets the full
    strict rendering rules (mannequin, background, angle, hanger/tag,
    framing, and As-Is color fidelity vs. the original), and (3) build a
    harder, problem-naming retry prompt when it doesn't. Wired into the
@@ -2369,17 +2539,14 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
 ════════════════════════════════════════════════════════════════ */
 const ARCHIVE_QA_MAX_ATTEMPTS = 3;
 
-// Despeckle the alpha channel: keep the garment (largest opaque blob) plus
-// any component ≥ keepFrac of it; zero everything smaller. This removes the
-// torn gray background fragments removeBg leaves when Gemini's background is
-// not flat #FFFFFF — the Archive-Mode analogue of Manifest's silhouette
-// ceiling (which Archive has no Pass-1 silhouette to build).
-// ── v1.17 Achromatic white peel (RENDER_RULES v1.2 §7.5 — 2nd pass) ──
+// ── v1.17 Achromatic white peel (RENDER_RULES §4.1 Step 6d analogue) ──
 // Runs after removeBg on every render. Removes leftover white: edge-reachable
 // near-white components, large attached white blobs (residual torso panels),
 // and whitish fringe at the alpha boundary. Light/white garments are
-// auto-detected and get a conservative 2px rim-only peel so the garment
-// itself is never eaten (edge-reachable principle, §7.2).
+// auto-detected (the garment's OWN chroma is measured — RENDER_RULES §4.1
+// 6d, so white knits no longer disable the peel) and get a conservative
+// 2px rim-only peel so the garment itself is never eaten (edge-reachable
+// principle, §4.1).
 function achromaticPeel(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -2491,7 +2658,17 @@ function achromaticPeel(blob) {
   });
 }
 
-function despeckleAlpha(blob, keepFrac = 0.08) {
+// ── v1.19 Step 6c — detached-island removal (RENDER_RULES §4.1) ────
+// A valid ghost render is exactly ONE opaque garment island. Connected-
+// component labeling on the alpha channel; the largest component is the
+// garment and is always kept. Every OTHER component is judged by chroma:
+//   • near-white / achromatic detached islands are ARTIFACTS → removed
+//   • textured / colored islands (a legit second garment part, e.g. a
+//     detached belt or scarf) → KEPT, unless they are tiny specks
+//   • sub-opacity haze around removed islands is swept
+// Replaces the v1.8 size-only despeckle (which could eat a legitimate
+// colored second part and keep a large white artifact).
+function despeckleAlpha(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
     const img = new Image();
@@ -2504,31 +2681,55 @@ function despeckleAlpha(blob, keepFrac = 0.08) {
       const id = ctx.getImageData(0, 0, W, H);
       const d  = id.data;
 
-      const ALPHA_THR = 24;
+      const ALPHA_THR = 24, SPECK_PX = 64;
       const label = new Int32Array(N).fill(-1);
       const stack = new Int32Array(N);
-      const areas = [];
+      const areas = [], whiteish = [];
       let comp = 0;
       for (let s = 0; s < N; s++) {
         if (d[s * 4 + 3] <= ALPHA_THR || label[s] !== -1) continue;
-        let sp = 0; stack[sp++] = s; label[s] = comp; let area = 0;
+        let sp = 0; stack[sp++] = s; label[s] = comp;
+        let area = 0, whiteN = 0;
         while (sp > 0) {
           const p = stack[--sp]; area++;
+          const pi = p * 4;
+          const mn = Math.min(d[pi], d[pi+1], d[pi+2]);
+          const spread = Math.max(d[pi], d[pi+1], d[pi+2]) - mn;
+          if (mn > 200 && spread < 32) whiteN++;   // near-white/achromatic pixel
           const x = p % W, y = (p / W) | 0;
           if (x > 0)     { const q = p - 1; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
           if (x < W - 1) { const q = p + 1; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
           if (y > 0)     { const q = p - W; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
           if (y < H - 1) { const q = p + W; if (label[q] === -1 && d[q*4+3] > ALPHA_THR) { label[q] = comp; stack[sp++] = q; } }
         }
-        areas.push(area); comp++;
+        areas.push(area); whiteish.push(whiteN / area); comp++;
       }
       if (comp <= 1) { URL.revokeObjectURL(img.src); resolve(blob); return; }
 
-      let maxA = 0; for (const a of areas) if (a > maxA) maxA = a;
-      const minKeep = Math.max(64, Math.floor(maxA * keepFrac));
+      // Largest component = the garment; always kept.
+      let maxIdx = 0, maxA = 0;
+      for (let i = 0; i < areas.length; i++) if (areas[i] > maxA) { maxA = areas[i]; maxIdx = i; }
+      const kill = areas.map((a, i) =>
+        i !== maxIdx && (a < SPECK_PX || whiteish[i] > 0.6));   // speck OR achromatic island
+      const removedAny = kill.some(Boolean);
+      if (!removedAny) { URL.revokeObjectURL(img.src); resolve(blob); return; }
+
+      // Mark removed pixels, then sweep sub-opacity haze within 2px of them.
+      const removed = new Uint8Array(N);
       for (let p = 0; p < N; p++) {
         const l = label[p];
-        if (l >= 0 && areas[l] < minKeep) d[p * 4 + 3] = 0;
+        if (l >= 0 && kill[l]) { d[p * 4 + 3] = 0; removed[p] = 1; }
+      }
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        const a = d[i * 4 + 3];
+        if (a === 0 || a > 160) continue;    // only sweep haze, not solid pixels
+        let near = false;
+        for (let dy = -2; dy <= 2 && !near; dy++) for (let dx = -2; dx <= 2; dx++) {
+          const nx = x + dx, ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < W && ny < H && removed[ny * W + nx]) { near = true; break; }
+        }
+        if (near) d[i * 4 + 3] = 0;
       }
       ctx.putImageData(id, 0, 0);
       cv.toBlob(b => { URL.revokeObjectURL(img.src); resolve(b || blob); }, 'image/png');
@@ -2546,8 +2747,8 @@ function despeckleAlpha(blob, keepFrac = 0.08) {
 // leftover fragment that removeBg's brightest-edge keying could not strip
 // (it keys to white, so DARK background regions survive). We erase every
 // such border-touching, non-largest blob regardless of its colour or size.
-// This is what catches the dark corner blobs that despeckle (size-only)
-// and removeBg (white-only) both miss.
+// This is what catches the dark corner blobs that despeckle and removeBg
+// (white-only) both miss.
 function trimBorderArtifacts(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -2658,7 +2859,7 @@ function downscaleBlobForVision(blob, maxDim = 512) {
 }
 
 // QA gate: Claude vision inspects the FINISHED render and decides whether it
-// meets the v5.4 strict rendering rules. Returns { pass, issues[], reason }
+// meets the strict rendering rules. Returns { pass, issues[], reason }
 // or null. NULL is NON-FATAL — same philosophy as classifyGarmentImage: if QA
 // can't run (no Claude key, HTTP/parse failure) the render is accepted rather
 // than blocking the batch.
@@ -2672,7 +2873,7 @@ function downscaleBlobForVision(blob, maxDim = 512) {
 //   "color"      — rule 9:      (only when originalB64 supplied) render color/pattern
 //                               clearly drifted from the source photo — As-Is fidelity
 // Dimensions (rule 8: 3:4 / 1200×1600) are enforced deterministically by
-// resizeToStandard, so QA does not re-check pixel size.
+// Frame Lock / normalize, so QA does not re-check pixel size.
 async function qaCheckRender(blob, originalB64 = null) {
   const key = localStorage.getItem('svs_claude_key') || '';
   if (!key) return null;
@@ -2787,7 +2988,7 @@ function blobToBase64(blob) {
    Fires ONE cheap text-only Claude call before any Gemini spend. If Claude
    is unreachable / out of credit / mis-keyed, the batch never starts, so a
    depleted balance can no longer let unguarded renders ship as "done".
-   RENDER_RULES §6: verify the live floor, don't trust the log. */
+   RENDER_RULES §7: verify the live floor, don't trust the log. */
 async function claudePreflight() {
   const key = localStorage.getItem('svs_claude_key') || '';
   if (!key) return { ok: false, error: 'Claude API key not set — open Settings (⚙)' };
@@ -2840,7 +3041,7 @@ async function ensureClaudeReady(context) {
 }
 
 /* ════════════════════════════════════════════════════════════════
-   v1.14 — RESIDUAL-FORM GATE (RENDER_RULES §4.3, deterministic)
+   v1.14 — RESIDUAL-FORM GATE (RENDER_RULES §4.2, deterministic)
    ════════════════════════════════════════════════════════════════
    A stochastic image model cannot be clamped by prompt text, so mannequin
    removal must have a CODE floor. This scans the alpha silhouette for a narrow
@@ -2900,7 +3101,7 @@ async function detectResidualForm(blob) {
     stalkFracH: +stalkFracH.toFixed(4),
     stalkWidthFrac: +stalkWidthFrac.toFixed(4)
   };
-  // Log for live threshold tuning (RENDER_RULES §4.3 asks for this).
+  // Log for live threshold tuning (RENDER_RULES §4.2 asks for this).
   console.log('[residual-form]', suspect ? 'SUSPECT' : 'clear', metrics);
   return { suspect, reason: suspect ? 'possible residual form above neckline' : null, metrics };
 }
@@ -2925,6 +3126,52 @@ function buildQaCorrective(qa) {
 }
 
 /* ════════════════════════════════════════════════════════════════
+   v1.19 — DECISION LOG (RENDER_RULES §4.5 audit)
+   ════════════════════════════════════════════════════════════════
+   Every render appends one record: mode, view, presets, color target,
+   Frame Lock result (scale, clamped/fit-limited flags), model used, QA
+   verdict. CSV-exported to the output folder alongside the run summary. */
+function logRenderDecision(row) {
+  const fl = row._frameLock || null;
+  state.decisionLog.push({
+    time:        new Date().toISOString(),
+    rulesVersion: RULES_VERSION,
+    mode:        row.archive ? 'archive' : 'manifest',
+    view:        'front',                        // Lite renders front views only
+    style:       row.style || '',
+    subfolder:   row.relDir || '',               // v1.20 — folder-tree ingest
+    colorName:   row.colorName || '',
+    colorCode:   row.colorCode || '',
+    colorTarget: row.sampledHex || '',
+    bodyType:    row.bodyType || '',
+    garmentType: row.garmentType || '',
+    status:      row.status,
+    qaIssues:    (row.qaIssues || []).join('|'),
+    flApplied:   fl ? String(!!fl.applied) : '',
+    flScale:     fl && fl.applied ? fl.scale : '',
+    flClamped:   fl && fl.applied ? String(!!fl.clamped) : '',
+    flFitLimited:fl && fl.applied ? String(!!fl.fitLimited) : '',
+    flReason:    fl && !fl.applied ? (fl.reason || '') : '',
+    renderModel: row.renderModel || '',
+    outFile:     row.outFile || '',
+    error:       row.error || '',
+  });
+}
+
+async function writeDecisionLogCsv() {
+  if (!state.folders.output || !state.decisionLog.length) return;
+  const cols = ['time','rulesVersion','mode','view','style','subfolder','colorName','colorCode',
+    'colorTarget','bodyType','garmentType','status','qaIssues','flApplied','flScale',
+    'flClamped','flFitLimited','flReason','renderModel','outFile','error'];
+  const esc = v => { const s = String(v == null ? '' : v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
+  const csv = cols.join(',') + '\n' +
+    state.decisionLog.map(r => cols.map(c => esc(r[c])).join(',')).join('\n') + '\n';
+  try {
+    await saveOutput(state.folders.output, 'decision-log.csv', new Blob([csv], { type: 'text/csv' }));
+  } catch (_) {}
+}
+
+/* ════════════════════════════════════════════════════════════════
    v1.14 — RUN SUMMARY + LOCK FILE (machine-readable autonomy contract)
    ════════════════════════════════════════════════════════════════
    Cowork cannot read the status bar. These files ARE the handshake:
@@ -2940,6 +3187,7 @@ async function writeAbortSummary(reason) {
   try {
     const body = JSON.stringify({
       app: SVL_VERSION,
+      rulesVersion: RULES_VERSION,
       finishedAt: new Date().toISOString(),
       reason,
       aborted: true,
@@ -2970,6 +3218,7 @@ async function writeRunSummary(reason) {
   const rows = state.rows;
   const rec = r => ({
     style: r.style || null,
+    subfolder: r.relDir || null,   // v1.20 — folder-tree ingest
     colorName: r.colorName || null,
     colorCode: r.colorCode || null,
     rawFile: r.rawFile || null,
@@ -2981,6 +3230,8 @@ async function writeRunSummary(reason) {
     formCheck: !!r._formCheck,
     formBadge: !!r._formBadge,   // v1.15 — form-gate flagged but QA positively passed
     classifyFailed: !!r._classifyFailed,
+    frameLock: r._frameLock || null,     // v1.19 — §4.5 audit
+    renderModel: r.renderModel || null,  // v1.19 — §4.5 audit
     error: r.error || null
   });
   const counts = {
@@ -2989,7 +3240,8 @@ async function writeRunSummary(reason) {
     needsReview:  rows.filter(r => r.status === 'needs-review').length,
     error:        rows.filter(r => r.status === 'error').length,
     skipped:      rows.filter(r => r._skipReason).length,
-    badges:       rows.filter(r => r._formBadge).length   // v1.15
+    badges:       rows.filter(r => r._formBadge).length,   // v1.15
+    ingestSkipped: (state.ingestSkipped || []).length      // v1.20 — chip/reference files not queued
   };
   // Safe to distribute ONLY if nothing is unverified: no errors, no reviews,
   // no form-checks, and the circuit breaker never tripped.
@@ -3002,6 +3254,7 @@ async function writeRunSummary(reason) {
 
   const summary = {
     app: SVL_VERSION,
+    rulesVersion: RULES_VERSION,   // v1.19 — declared RENDER_RULES compliance (§0)
     finishedAt: new Date().toISOString(),
     reason: reason || 'batch complete',
     mode: state.archiveMode ? 'archive' : 'manifest',
@@ -3009,6 +3262,7 @@ async function writeRunSummary(reason) {
     circuit_tripped: !!state.circuitTripped,
     all_verified,
     counts,
+    ingest_skipped: state.ingestSkipped || [],   // v1.20 — never silent
     rows: rows.map(rec)
   };
 
@@ -3016,18 +3270,21 @@ async function writeRunSummary(reason) {
     const json = JSON.stringify(summary, null, 2);
     await saveOutput(state.folders.output, 'run-summary.json', new Blob([json], { type: 'application/json' }));
     const txt =
-      `SweaterVision Light ${SVL_VERSION} — run summary\n` +
+      `SweaterVision Light ${SVL_VERSION} (RENDER_RULES ${RULES_VERSION}) — run summary\n` +
       `Finished: ${summary.finishedAt}\n` +
       `Mode: ${summary.mode}\n` +
       `SAFE TO DISTRIBUTE: ${all_verified ? 'YES' : 'NO'}\n` +
       (state.circuitTripped ? `*** CIRCUIT BREAKER TRIPPED — batch halted early ***\n` : '') +
       `\nDone: ${counts.done}   Needs review: ${counts.needsReview}   Errors: ${counts.error}   Skipped: ${counts.skipped}   Total: ${counts.total}\n` +
+      (counts.ingestSkipped ? `Chip/reference files not rendered (ingest filter): ${counts.ingestSkipped}\n` : '') +
       (counts.needsReview || counts.error
         ? `\nNot shipped clean:\n` + rows.filter(r => r.status === 'needs-review' || r.status === 'error')
-            .map(r => `  - ${r.outFile || r.rawFile || r.style} [${r.status}] ${r.qaNote || r.error || ''}`).join('\n') + '\n'
+            .map(r => `  - ${(r.relDir ? r.relDir + '/' : '') + (r.outFile || r.rawFile || r.style)} [${r.status}] ${r.qaNote || r.error || ''}`).join('\n') + '\n'
         : '');
     await saveOutput(state.folders.output, 'run-summary.txt', new Blob([txt], { type: 'text/plain' }));
   } catch (_) {}
+  // v1.19 — §4.5 audit: CSV decision log lands next to the run summary.
+  await writeDecisionLogCsv();
   return summary;
 }
 
@@ -3100,6 +3357,11 @@ async function restoreFolders() {
     state.folders.output = outH; state.inputs.output = true;
     updateInputSlot('output', outH.name + '/');
   }
+  // v1.20 — recursive Originals index for folder-tree ingest. Built AFTER the
+  // output handle is restored so the walk can skip a nested Output folder.
+  if (rawOk) {
+    try { state.rawTreeIndex = await buildFileTreeIndex(rawH); } catch (_) { state.rawTreeIndex = null; }
+  }
   const chipH = await idbGetHandle('chip');
   if (chipH) {
     const chipOk = wantAutorun ? (await chipH.queryPermission({ mode: 'read' })) === 'granted'
@@ -3138,8 +3400,13 @@ async function maybeAutorun() {
 }
 
 // ── Single row render ─────────────────────────────────────────────
+// v1.19 — pipeline order is binding per RENDER_RULES §4:
+//   removeBg (incl. 6c islands / 6d white peel) → form gate → color lock
+//   → Frame Lock (or plain normalize fallback) → store.
+// v1.20 — outputs land in the Output subfolder mirroring row.relDir.
 async function renderRow(row) {
   row.status = 'rendering'; row.error = null;
+  row.renderModel = localStorage.getItem('svs_gemini_model') || 'gemini-2.5-flash-image';   // v1.19 §4.5
   renderTable();
 
   // Resolve body type and garment type — row value beats global default
@@ -3194,11 +3461,12 @@ async function renderRow(row) {
     try { qaOriginalB64 = await downscaleForVision(row.rawFileHandle); } catch (_) {}
 
     // ── v1.8 QA-gated render loop ─────────────────────────────────
-    // render → despeckle → resize → Claude-vision QA. On QA fail, retry
-    // with a harder, problem-naming prompt up to ARCHIVE_QA_MAX_ATTEMPTS.
-    // A render that never passes is saved under a " - REVIEW" name (so it
-    // does NOT satisfy the idempotency key and is re-attempted next run) and
-    // the row is flagged 'needs-review' — failures never silently ship.
+    // render → clean (6c/6d) → form gate → Frame Lock → Claude-vision QA.
+    // On QA fail, retry with a harder, problem-naming prompt up to
+    // ARCHIVE_QA_MAX_ATTEMPTS. A render that never passes is saved under a
+    // " - REVIEW" name (so it does NOT satisfy the idempotency key and is
+    // re-attempted next run) and the row is flagged 'needs-review' —
+    // failures never silently ship.
     let aFinal = null, aBlob = null, qa = null, formResult = { suspect: false };
     row._formBadge = false;   // v1.15 — fresh verdict per render
     for (let attempt = 1; attempt <= ARCHIVE_QA_MAX_ATTEMPTS; attempt++) {
@@ -3222,43 +3490,47 @@ async function renderRow(row) {
       row._stepLabel = 'Removing background…'; renderTable();
       aBlob = await removeBg(aB64, aMime);
 
-      // v1.17 — 2nd pass: §7.5 achromatic peel removes all leftover white
-      row._stepLabel = 'White peel (2nd pass)…'; renderTable();
+      // v1.17 — 2nd pass: §4.1 6d achromatic peel removes all leftover white
+      row._stepLabel = 'White peel (6d)…'; renderTable();
       aBlob = await achromaticPeel(aBlob) || aBlob;
 
-      row._stepLabel = 'Cleaning stray fragments…'; renderTable();
+      row._stepLabel = 'Detached-island removal (6c)…'; renderTable();
       let cleaned = await despeckleAlpha(aBlob);
       // v1.11 — erase dark/gray shaded background blobs that touch the frame
       // edge (removeBg keys to white and leaves dark corners behind).
       cleaned = await trimBorderArtifacts(cleaned || aBlob);
 
-      row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
-      aFinal = await resizeToStandard(cleaned || aBlob);
-
       // v1.11 — degenerate-render guard: an empty/all-background frame (the
       // "fully black" failure) or a frame that is almost entirely opaque
       // (background never stripped) is not worth a QA call — force a retry.
-      const coverage = await renderCoverage(aFinal || cleaned || aBlob);
+      const coverage = await renderCoverage(cleaned || aBlob);
       if (coverage < 0.02 || coverage > 0.97) {
         qa = { pass: false, issues: ['background'],
                reason: coverage < 0.02 ? 'empty render — nothing generated' : 'background not removed' };
         formResult = { suspect: false };
+        aFinal = await resizeToStandard(cleaned || aBlob);   // keep something reviewable
         if (attempt < ARCHIVE_QA_MAX_ATTEMPTS) { await new Promise(r => setTimeout(r, 1500)); continue; }
         break;
       }
 
-      // v1.14 — deterministic residual-form gate (RENDER_RULES §4.3), BEFORE
-      // the QA vision call. Catches a surviving neck/head/bust in code even if
-      // the (stochastic, possibly-unavailable) QA call would have missed it.
+      // v1.14 — deterministic residual-form gate (RENDER_RULES §4.2). v1.19 —
+      // runs BEFORE Frame Lock per the §4 binding order, and before the QA
+      // vision call. Catches a surviving neck/head/bust in code even if the
+      // (stochastic, possibly-unavailable) QA call would have missed it.
       row._stepLabel = 'Form-gate scan…'; renderTable();
-      formResult = await detectResidualForm(aFinal || cleaned || aBlob);
+      formResult = await detectResidualForm(cleaned || aBlob);
+
+      // v1.19 — Frame Lock (§4.4): garment scale/position normalization on the
+      // delivered 1200×1600 canvas; plain 3:4 normalize on any failure path.
+      row._stepLabel = 'Frame Lock…'; renderTable();
+      aFinal = await frameLockOrNormalize(cleaned || aBlob, aGarment, row);
 
       row._stepLabel = `Quality check ${attempt}/${ARCHIVE_QA_MAX_ATTEMPTS}…`; renderTable();
       qa = await qaCheckRender(aFinal || cleaned || aBlob, qaOriginalB64);
 
       // v1.14 FAIL-CLOSED: a null QA (Claude unreachable / out of credit /
       // bad JSON) is NO LONGER treated as a pass.
-      // v1.15 — QA-agreement downgrade (RENDER_RULES §4.3): form-gate suspicion
+      // v1.15 — QA-agreement downgrade (RENDER_RULES §4.2): form-gate suspicion
       // gets ONE automatic re-roll; if the re-roll is still suspect but the
       // vision QA POSITIVELY passes (so QA affirmatively saw no mannequin), we
       // keep the cleaner render and badge it instead of routing to review.
@@ -3276,7 +3548,7 @@ async function renderRow(row) {
     const passed     = qaOk && !row._formCheck && !row._classifyFailed;
     const baseName = stripExt(buildOutputFilename(row));   // "<base> - GM"
     const outName  = passed ? `${baseName}.png` : `${baseName} - REVIEW.png`;
-    await saveOutput(state.folders.output, outName, aFinal || aBlob);
+    await saveOutput(await getOutputDirHandle(row.relDir || ''), outName, aFinal || aBlob);   // v1.20 — mirrored subfolder
 
     if (row.outObjectURL) URL.revokeObjectURL(row.outObjectURL);   // v1.15 — no leak on re-renders
     row.outFile      = outName;
@@ -3296,6 +3568,7 @@ async function renderRow(row) {
         row._classifyFailed    ? 'garment type not auto-detected — verify' :
         (qa.reason || (qa.issues || []).join(', ') || 'render rules not met');
     }
+    logRenderDecision(row);   // v1.19 §4.5
     return;
   }
 
@@ -3310,7 +3583,7 @@ async function renderRow(row) {
 
     // v1.14 — the base is shared across ALL colorways of this style, so a
     // residual form here would poison every colorway. Detect it deterministically
-    // and re-roll ONCE (RENDER_RULES §4.3) before caching. Keep the cleaner base.
+    // and re-roll ONCE (RENDER_RULES §4.2) before caching. Keep the cleaner base.
     // v1.15 — CRITICAL fix: never cache a null base. removeBg can resolve null
     // (image-decode failure); the fallback is the raw Gemini render, and if even
     // that is unavailable we THROW so the row errors instead of poisoning the
@@ -3321,7 +3594,7 @@ async function renderRow(row) {
       const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
       lastRawB64 = b64;
       const baseRaw0 = await removeBg(b64, bMime);
-      // v1.17 — 2nd pass: §7.5 achromatic peel BEFORE silhouette extraction so
+      // v1.17 — 2nd pass: §4.1 6d achromatic peel BEFORE silhouette extraction so
       // leftover white (residual torso panels) never enters the alpha ceiling.
       const baseRaw = await achromaticPeel(baseRaw0) || baseRaw0;
       // v1.11 — strip any dark/shaded border blob before deriving the silhouette.
@@ -3373,14 +3646,18 @@ async function renderRow(row) {
     row._stepLabel = 'Removing background…'; renderTable();
     const rawBlob0 = await removeBg(base64, mimeType);
 
-    // v1.17 — 2nd pass: §7.5 achromatic peel removes leftover white before the
+    // v1.17 — 2nd pass: §4.1 6d achromatic peel removes leftover white before the
     // ceiling and BEFORE the LAB lock (white fringe would contaminate the mean).
-    row._stepLabel = 'White peel (2nd pass)…'; renderTable();
+    row._stepLabel = 'White peel (6d)…'; renderTable();
     const rawBlob = await achromaticPeel(rawBlob0) || rawBlob0;
 
     // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
     row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
     const ceiledBlob = await applyAlphaCeiling(rawBlob, base.silhouette);
+
+    // v1.19 — §4 binding order: form gate BEFORE color lock and Frame Lock.
+    row._stepLabel = 'Form-gate scan…'; renderTable();
+    formResult = await detectResidualForm(ceiledBlob || rawBlob);
 
     // LAB color lock — anchor rendered color to chip-sampled hex
     row._stepLabel = 'Locking color to chip…'; renderTable();
@@ -3388,20 +3665,17 @@ async function renderRow(row) {
       ? await enforceEyedropColor(ceiledBlob || rawBlob, row.sampledHex)
       : (ceiledBlob || rawBlob);
 
-    // Resize to standard 1200×1600 (3:4) output
-    row._stepLabel = 'Resizing to 1200×1600…'; renderTable();
-    finalBlob = await resizeToStandard(lockedBlob);
-
-    // v1.14 — deterministic residual-form gate + fail-closed vision QA.
-    row._stepLabel = 'Form-gate scan…'; renderTable();
-    formResult = await detectResidualForm(finalBlob || lockedBlob);
+    // v1.19 — Frame Lock (§4.4) replaces the plain resize; plain 3:4
+    // normalize remains the non-destructive fallback.
+    row._stepLabel = 'Frame Lock…'; renderTable();
+    finalBlob = await frameLockOrNormalize(lockedBlob, garmentType, row);
 
     row._stepLabel = `Quality check ${attempt}/${MANIFEST_QA_MAX_ATTEMPTS}…`; renderTable();
     qa = await qaCheckRender(finalBlob || lockedBlob);   // render-only (recolor)
 
     const qaOk = qa && qa.pass === true;
     if (qaOk && !formResult.suspect) break;
-    // v1.15 — QA-agreement downgrade (RENDER_RULES §4.3): after the re-roll,
+    // v1.15 — QA-agreement downgrade (RENDER_RULES §4.2): after the re-roll,
     // Pass-2 form suspicion with a POSITIVE QA pass is badged, not review-routed.
     // (Pass-1 base suspicion — row._formCheck — is NOT downgraded: the base is
     // never QA'd and taints every colorway; it stays review until re-rolled.)
@@ -3418,7 +3692,7 @@ async function renderRow(row) {
   const cleanName = buildOutputFilename(row);            // "Style - Color - Code.png"
   const outName   = passed ? cleanName
                            : stripExt(cleanName) + ' - REVIEW.png';
-  await saveOutput(state.folders.output, outName, finalBlob || lockedBlob);
+  await saveOutput(await getOutputDirHandle(row.relDir || ''), outName, finalBlob || lockedBlob);   // v1.20 — mirrored subfolder
 
   if (row.outObjectURL) URL.revokeObjectURL(row.outObjectURL);   // v1.15 — no leak on re-renders
   row.outFile      = outName;
@@ -3440,6 +3714,7 @@ async function renderRow(row) {
       (qa.reason || (qa.issues || []).join(', ') || 'render rules not met');
     row._formCheck = formBad;   // persists so a re-run knows to evict the base
   }
+  logRenderDecision(row);   // v1.19 §4.5
 }
 
 async function renderRowWithRetry(row) {
@@ -3455,6 +3730,7 @@ async function renderRowWithRetry(row) {
         await new Promise(r => setTimeout(r, delay));
       } else {
         row.status = 'error'; row.error = err.message; row._stepLabel = null;
+        logRenderDecision(row);   // v1.19 §4.5 — errors are audited too
         return;
       }
     }
@@ -3585,7 +3861,23 @@ async function pickFolder(type) {
     }
 
     // v1.7 Archive Mode: Originals folder IS the worklist — no Excel, no chips
+    // v1.20 — scan recursively so style subfolders are ingested and mirrored.
     if (state.archiveMode && type === 'raw') {
+      setBatchStatus('Scanning ' + dh.name + ' (incl. subfolders)…');
+      try { state.rawTreeIndex = await buildFileTreeIndex(dh); } catch (_) { state.rawTreeIndex = null; }
+      await buildArchiveRows();
+      syncProcessBtn();
+      return;
+    }
+
+    // v1.20 — keep the tree index warm in manifest mode too (harmless), and
+    // refresh it when the output folder is picked after the raw folder (the
+    // walk skips a nested Output folder only if the handle is known).
+    if (type === 'raw' && state.folders.raw) {
+      try { state.rawTreeIndex = await buildFileTreeIndex(state.folders.raw); } catch (_) {}
+    }
+    if (state.archiveMode && type === 'output' && state.folders.raw) {
+      try { state.rawTreeIndex = await buildFileTreeIndex(state.folders.raw); } catch (_) {}
       await buildArchiveRows();
       syncProcessBtn();
       return;
@@ -3953,15 +4245,18 @@ function buildRow(r) {
   const rowClass   = { done:'row-done', error:'row-error', rendering:'row-rendering', skipped:'row-skipped', 'needs-review':'row-review' }[r.status] || '';
   const activeClass = state.activeRowIdx === r.idx ? 'active-row' : '';
 
+  // v1.20 — show the subfolder ahead of the filename so tree batches read clearly
+  const rawDisplayName = (r.relDir ? r.relDir + '/' : '') + (r.rawFile || '');
+
   // ── Raw thumbnail ────────────────────────────────────────────
   let rawThumb;
   if (r.rawObjectURL) {
-    rawThumb = `<img class="thumb-img zoomable" src="${r.rawObjectURL}" alt="${r.rawFile}" data-cap="ORIGINAL — ${r.rawFile}">
-                <span style="font-family:var(--font-mono);font-size:9px;color:var(--ink-3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block">${r.rawFile}</span>`;
+    rawThumb = `<img class="thumb-img zoomable" src="${r.rawObjectURL}" alt="${r.rawFile}" data-cap="ORIGINAL — ${rawDisplayName}">
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--ink-3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;display:inline-block" title="${rawDisplayName}">${rawDisplayName}</span>`;
   } else if (r.rawFile && !['error','pending'].includes(r.status)) {
     rawThumb = `<div class="fake-raw" style="background:linear-gradient(180deg,${r.bgColor}cc 0%,${r.bgColor}88 100%)">
                   <div class="collar"></div><div class="body"></div></div>
-                <span style="font-family:var(--font-mono);font-size:9px;color:var(--ink-3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${r.rawFile}</span>`;
+                <span style="font-family:var(--font-mono);font-size:9px;color:var(--ink-3);max-width:80px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${rawDisplayName}">${rawDisplayName}</span>`;
   } else if (r.rawNote === 'MULTI') {
     rawThumb = `<div class="thumb-multi">2+<br>files</div>
                 <div style="display:flex;flex-direction:column;gap:1px">
@@ -4059,7 +4354,7 @@ function buildRow(r) {
     garmentCell = `<span style="font-family:var(--font-mono);font-size:10px;color:${r.garmentType?'var(--ink)':'var(--ink-3)'}" title="${r._gtSource==='filename'?'from filename':(r.garmentType?'from manifest':'global setting')}">${gtLabel}</span>`;
   }
   const outCell = r.outObjectURL
-    ? `<img class="zoomable" src="${r.outObjectURL}" style="width:28px;height:36px;object-fit:contain;border-radius:3px;background:#f0f0f0;border:1px solid rgba(0,0,0,.08)" alt="${r.outFile}" data-cap="RENDER — ${r.outFile}">`
+    ? `<img class="zoomable" src="${r.outObjectURL}" style="width:28px;height:36px;object-fit:contain;border-radius:3px;background:#f0f0f0;border:1px solid rgba(0,0,0,.08)" alt="${r.outFile}" data-cap="RENDER — ${(r.relDir ? r.relDir + '/' : '') + (r.outFile || '')}">`
     : r.status === 'rendering'
       ? `<span style="font-size:9px;color:var(--rendering);font-family:var(--font-mono);white-space:nowrap">${r._stepLabel||'…'}</span>`
       : `<span class="out-dash">—</span>`;
@@ -4072,18 +4367,6 @@ function buildRow(r) {
     ? `<input type="checkbox" class="row-pick" ${r._selected ? 'checked' : ''} onclick="event.stopPropagation()" onchange="toggleRowSelect(${r.idx}, this.checked)" title="Select for re-run">`
     : '';
 
-  // v1.19 — inline per-row fix instruction, shown in Review/Errors view under
-  // the QA note. Binds to the SAME row._userEdit as the drawer textarea (v1.12),
-  // so it feeds userEditCorrective() on the next re-run — single, selected, or
-  // bulk. Kept in sync with the drawer both ways via setUserEdit().
-  const inlineEdit = (inPickFilter && isRetryable && r.rawFileHandle)
-    ? `<textarea class="row-edit" rows="2"
-         placeholder="Describe what to fix for the re-run…"
-         onclick="event.stopPropagation()"
-         oninput="setUserEdit(${r.idx}, this.value, 'inline')"
-         data-edit-idx="${r.idx}">${escHtml(r._userEdit || '')}</textarea>`
-    : '';
-
   return `<tr class="${rowClass} ${activeClass}" data-idx="${r.idx}" data-status="${r.status}">
     <td>${pickBox}${r.idx + 1}</td>
     <td><span class="cell-style">${r.style || '—'}</span></td>
@@ -4094,7 +4377,7 @@ function buildRow(r) {
     <td>${garmentCell}</td>
     <td><div class="cell-thumb">${rawThumb}</div></td>
     <td><div class="cell-thumb">${chipThumb}</div></td>
-    <td style="vertical-align:top;padding-top:8px">${statusCell}${inlineEdit}</td>
+    <td style="vertical-align:top;padding-top:8px">${statusCell}</td>
     <td>${outCell}</td>
   </tr>`;
 }
@@ -4342,29 +4625,28 @@ function toggleBatch() {
 }
 
 // ── Pre-flight: mark rows whose output file already exists ─────────
-// Runs once at batch start. Scans the output folder for existing PNGs
-// matching each row's expected filename. Rows already done are skipped,
-// not re-rendered. Safe to run multiple batches from the same Excel.
+// Runs once at batch start. Scans the output folder (v1.20: RECURSIVELY,
+// so mirrored subfolders are honored) for existing PNGs matching each
+// row's expected path. Rows already done are skipped, not re-rendered.
+// Safe to run multiple batches from the same inputs.
 async function markAlreadyRendered(eligible) {
   if (!state.folders.output) return 0;
 
   let outputIndex;
   try {
-    outputIndex = await buildFileIndex(state.folders.output);
+    outputIndex = await buildOutputTreeIndex();   // v1.20 — tree-aware
   } catch (_) { return 0; }
 
   // v1.15 — REVIEW-file janitor: a re-run that passes writes the clean name
   // and used to leave the old ' - REVIEW.png' behind. Sweep any REVIEW file
-  // whose clean twin exists (both Archive '- GM - REVIEW' and Manifest names).
+  // whose clean twin exists — v1.20: in every mirrored subfolder too.
   let swept = 0;
-  for (const [lname] of outputIndex) {
-    if (!lname.endsWith(' - review.png')) continue;
-    const cleanTwin = lname.replace(/ - review\.png$/, '.png');
+  for (const [lpath, entry] of outputIndex) {
+    if (!lpath.endsWith(' - review.png')) continue;
+    const cleanTwin = lpath.replace(/ - review\.png$/, '.png');
     if (outputIndex.has(cleanTwin)) {
       try {
-        // removeEntry needs the ORIGINAL casing — re-resolve via the handle map
-        const h = outputIndex.get(lname);
-        await state.folders.output.removeEntry(h.name);
+        await entry.dirHandle.removeEntry(entry.name);
         swept++;
       } catch (_) {}
     }
@@ -4374,7 +4656,8 @@ async function markAlreadyRendered(eligible) {
   let skipped = 0;
   for (const row of eligible) {
     const filename = buildOutputFilename(row);
-    if (outputIndex.has(filename.toLowerCase())) {
+    const relKey = ((row.relDir ? row.relDir + '/' : '') + filename).toLowerCase();   // v1.20
+    if (outputIndex.has(relKey)) {
       row.status  = 'done';
       row.outFile = filename;
       row._skipReason = 'Already rendered — file exists in output folder';
@@ -4527,11 +4810,13 @@ function buildOutputFilename(row) {
 }
 
 /* Rematch button — re-runs matching without reloading Excel.
-   In Archive Mode: re-scans the Originals folder for new/changed files. */
+   In Archive Mode: re-scans the Originals folder (v1.20: recursively)
+   for new/changed files. */
 async function rematch() {
   if (state.archiveMode) {
     if (!state.inputs.raw) { showToast('Select Originals folder first', 'error'); return; }
     state.rawFileIndex = await buildFileIndex(state.folders.raw);
+    try { state.rawTreeIndex = await buildFileTreeIndex(state.folders.raw); } catch (_) { state.rawTreeIndex = null; }   // v1.20
     await buildArchiveRows();
     return;
   }
@@ -4559,7 +4844,7 @@ function openDrawer(idx) {
 
   document.getElementById('d-style').textContent   = r.style || '(no style)';
   document.getElementById('d-subtitle').textContent =
-    [r.colorName, r.colorCode, r.composition].filter(Boolean).join(' · ') || 'No color info';
+    [r.relDir, r.colorName, r.colorCode, r.composition].filter(Boolean).join(' · ') || 'No color info';
 
   // Raw preview — real image if available, fallback to CSS ghost
   const rawPreview = document.getElementById('d-raw-preview');
@@ -4592,9 +4877,15 @@ function openDrawer(idx) {
       ? `Auto-match keys: ${r.chipMatchKeys}`
       : 'Chip not matched';
 
-  // Fields
+  // Fields — v1.19 adds the Frame Lock audit line (§4.5); v1.20 adds Subfolder
+  const flVal = r._frameLock
+    ? (r._frameLock.applied
+        ? `applied · scale ${r._frameLock.scale}${r._frameLock.clamped ? ' · clamped' : ''}${r._frameLock.fitLimited ? ' · fit-limited' : ''}`
+        : `fallback (${r._frameLock.reason})`)
+    : '—';
   const fields = [
     ['Style',           r.style       || '—'],
+    ['Subfolder',       r.relDir      || '—'],
     ['Color Name',      r.colorName   || '—'],
     ['Color Code',      r.colorCode   || '—'],
     ['Composition',     r.composition || '—'],
@@ -4602,6 +4893,8 @@ function openDrawer(idx) {
     ['Chip File',       r.chipFile    || '—'],
     ['Chip Match Keys', r.chipMatchKeys || '—'],
     ['Status',          r.status],
+    ['Frame Lock',      flVal],
+    ['Render Model',    r.renderModel || '—'],
     ['Output File',     r.outFile     || '—'],
   ];
   document.getElementById('d-field-list').innerHTML = fields.map(([k,v]) => `
@@ -4633,10 +4926,10 @@ function openDrawer(idx) {
       const badge = flagged
         ? `<span class="done-badge" style="background:var(--review)">Review${r.qaIssues && r.qaIssues.length ? ' — ' + r.qaIssues.join(', ') : ''}</span>`
         : `<span class="done-badge">Done</span>`;
-      outPreview.innerHTML = `<img class="zoomable" src="${r.outObjectURL}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--r-lg)" alt="${r.outFile}" data-cap="RENDER — ${r.outFile}">${badge}`;
+      outPreview.innerHTML = `<img class="zoomable" src="${r.outObjectURL}" style="width:100%;height:100%;object-fit:contain;border-radius:var(--r-lg)" alt="${r.outFile}" data-cap="RENDER — ${(r.relDir ? r.relDir + '/' : '') + (r.outFile || '')}">${badge}`;
     }
     document.getElementById('d-out-filename').textContent =
-      (r.outFile || '') + (r.status === 'needs-review' && r.qaNote ? `  —  QA: ${r.qaNote}` : '');
+      ((r.relDir ? r.relDir + '/' : '') + (r.outFile || '')) + (r.status === 'needs-review' && r.qaNote ? `  —  QA: ${r.qaNote}` : '');
   }
 
   // Buttons
@@ -4672,35 +4965,9 @@ function retryRow()    { rerenderActiveRow(); }   // v1.15 — renamed from fake
 // v1.12 — store the per-row edit instruction live as the operator types.
 // Picked up by renderRow (via userEditCorrective) on the next re-render —
 // single (this drawer) or batch (selected / all).
-// v1.19 — unified setter shared by the drawer textarea and the inline
-// Review-view field; mirrors the value to the OTHER input so both stay in
-// sync without a renderTable() (which would steal focus mid-keystroke).
-function setUserEdit(idx, val, source) {
-  const r = state.rows.find(x => x.idx === idx);
-  if (!r) return;
-  r._userEdit = val;
-  // Mirror to the drawer if it's open on this row and the edit came from inline
-  if (source !== 'drawer' && state.activeRowIdx !== null) {
-    const active = state.rows[state.activeRowIdx];
-    if (active && active.idx === idx) {
-      const d = document.getElementById('d-edit');
-      if (d && d.value !== val) d.value = val;
-    }
-  }
-  // Mirror to the inline field if it exists for this row and the edit came from the drawer
-  if (source !== 'inline') {
-    const inline = document.querySelector(`textarea.row-edit[data-edit-idx="${idx}"]`);
-    if (inline && inline.value !== val) inline.value = val;
-  }
-}
-function onEditInput(val) {   // drawer entry point (kept for existing wiring)
+function onEditInput(val) {
   const r = state.rows[state.activeRowIdx];
-  if (r) setUserEdit(r.idx, val, 'drawer');
-}
-
-// v1.19 — minimal HTML escape for user-typed text placed inside markup
-function escHtml(s) {
-  return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  if (r) r._userEdit = val;
 }
 
 // v1.7 — real per-row re-render. Overwrites any existing output file.
@@ -4766,7 +5033,11 @@ function setGarmentType(type) {
 /* ════════════════════════════════════════════════════════════════
    v1.7 ARCHIVE MODE — backdate old seasons, render-as-is
 ════════════════════════════════════════════════════════════════ */
-const IMAGE_EXTS = /\.(jpe?g|png|webp|bmp|tiff?)$/i;
+// v1.20 — HEIC/HEIF accepted: Gemini decodes them server-side; the in-browser
+// thumbnail and vision-classify downscale may fail (Chrome can't decode HEIC),
+// in which case the row renders with defaults and is flagged for review by the
+// existing fail-closed classify path — never silently dropped.
+const IMAGE_EXTS = /\.(jpe?g|png|webp|bmp|tiff?|heic|heif)$/i;
 
 function setMode(mode) {
   if (state.batchRunning) { showToast('Pause the batch before switching modes', 'error'); return; }
@@ -4790,11 +5061,11 @@ function setMode(mode) {
   // Hint + empty-state copy
   const hint = document.getElementById('type-hint');
   if (hint) hint.textContent = state.archiveMode
-    ? 'Archive Mode — render exactly as-is. Body and garment type auto-detected per image.'
+    ? 'Archive Mode — render exactly as-is. Subfolders scanned and mirrored. Body and garment type auto-detected per image.'
     : 'Global defaults — overridden per row by Excel columns';
   const desc = document.querySelector('#empty-state .empty-desc');
   if (desc) desc.innerHTML = state.archiveMode
-    ? 'Select an Originals folder of old-season images (on-model OK) and an Output folder.<br>Every image is rendered as a ghost mannequin <strong>exactly as photographed</strong> — no manifest, no chips.<br>Garment and body type are <strong>auto-detected</strong> per image.'
+    ? 'Select an Originals folder of old-season images (on-model OK) and an Output folder.<br>Every image is rendered as a ghost mannequin <strong>exactly as photographed</strong> — no manifest, no chips.<br><strong>Subfolders are scanned recursively</strong> and mirrored into the Output folder; inside subfolders, only style-number-prefixed files render (chips/reference images are skipped and reported).<br>Garment and body type are <strong>auto-detected</strong> per image.'
     : 'Load an Excel manifest, then select Originals and Color Chips folders.<br>File matching and chip sampling run automatically.<br><br>No real files? Click <strong>Demo</strong> in the toolbar to preview.';
 
   // Rebuild worklist for the new mode
@@ -4812,26 +5083,54 @@ function extractStyleFromFilename(name) {
   return m ? m[0].toUpperCase() : null;
 }
 
-// Scan the Originals folder index and create one render-as-is row per image.
+// Scan the Originals folder and create one render-as-is row per image.
 // Replaces Excel parsing + matching + sampling in Archive Mode.
+// v1.20 — uses the RECURSIVE tree index when available: subfolders are
+// ingested, each row carries relDir (mirrored into the Output folder), and
+// inside subfolders only style-number-prefixed garment shots are queued —
+// chip/reference files are recorded in state.ingestSkipped and reported.
 async function buildArchiveRows() {
   cleanupObjectURLs();
-  const files = [...state.rawFileIndex.entries()]
-    .filter(([name]) => IMAGE_EXTS.test(name))
-    .sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+
+  const source = (state.rawTreeIndex && state.rawTreeIndex.size)
+    ? [...state.rawTreeIndex.values()]
+    : [...state.rawFileIndex.entries()].map(([name, handle]) => ({ handle, relDir: '', name }));
+
+  const images = source.filter(f => IMAGE_EXTS.test(f.name));
+
+  state.ingestSkipped = [];
+  const queued = [];
+  for (const f of images) {
+    if (f.relDir && !ARCHIVE_STYLE_PREFIX_RE.test(f.name)) {
+      state.ingestSkipped.push({
+        file: (f.relDir ? f.relDir + '/' : '') + f.name,
+        reason: 'no style-number prefix — treated as chip/reference'
+      });
+    } else {
+      queued.push(f);
+    }
+  }
+  queued.sort((a, b) => {
+    const pa = (a.relDir ? a.relDir + '/' : '') + a.name;
+    const pb = (b.relDir ? b.relDir + '/' : '') + b.name;
+    return pa.localeCompare(pb, undefined, { numeric: true });
+  });
 
   state.rows = [];
   let i = 0;
-  for (const [name, handle] of files) {
+  for (const f of queued) {
+    const name = f.name;
+    const gtDet = detectGarmentTypeFromName(name);   // v1.18 — filename keyword
     const row = {
       idx: i++,
       archive: true,
+      relDir: f.relDir || '',                        // v1.20 — mirrored output subfolder
       style: extractStyleFromFilename(name) || stripExt(name),
       colorName: '', colorCode: '', composition: '',
       bodyType: null,
-      garmentType: detectGarmentTypeFromName(name),   // v1.18 — filename keyword
-      _gtSource: detectGarmentTypeFromName(name) ? 'filename' : null,
-      rawFile: name, rawFileHandle: handle,
+      garmentType: gtDet,
+      _gtSource: gtDet ? 'filename' : null,
+      rawFile: name, rawFileHandle: f.handle,
       chipFile: null, chipFileHandle: null,
       chipMatchKeys: 'As-Is',
       status: 'matched',
@@ -4839,15 +5138,22 @@ async function buildArchiveRows() {
       outFile: null, error: null, rowNote: null,
     };
     try {
-      const f = await handle.getFile();
-      row.rawObjectURL = URL.createObjectURL(f);
-    } catch (_) { /* thumbnail optional */ }
+      const file = await f.handle.getFile();
+      row.rawObjectURL = URL.createObjectURL(file);
+    } catch (_) { /* thumbnail optional (e.g. HEIC — Chrome can't decode) */ }
     state.rows.push(row);
   }
 
   renderTable(); updateCounts(); syncProcessBtn();
-  if (files.length) showToast(`Archive Mode: ${files.length} image${files.length !== 1 ? 's' : ''} queued for as-is render`, 'success');
-  else              showToast('No image files found in that folder', 'error');
+  const subCount = new Set(queued.filter(f => f.relDir).map(f => f.relDir)).size;
+  if (queued.length) {
+    showToast(`Archive Mode: ${queued.length} image${queued.length !== 1 ? 's' : ''} queued`
+      + (subCount ? ` across ${subCount} subfolder${subCount !== 1 ? 's' : ''}` : '')
+      + (state.ingestSkipped.length ? ` — ${state.ingestSkipped.length} chip/reference file${state.ingestSkipped.length !== 1 ? 's' : ''} skipped` : ''), 'success');
+  } else {
+    showToast('No image files found in that folder'
+      + (state.ingestSkipped.length ? ` (${state.ingestSkipped.length} skipped as chip/reference)` : ''), 'error');
+  }
 }
 
 function loadKeys() {
