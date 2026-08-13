@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light v1.24</title>
+<title>SweaterVision Light v1.25</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -864,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.24</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.25</span>
 
     <div class="header-spacer"></div>
 
@@ -1456,7 +1456,7 @@ const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no da
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.24';   // v1.24 — WEB-PARITY PORT (2026-08-13): render-quality gap vs SweaterVision v2.1.1 closed by porting the canonical file's removeBg chain VERBATIM (renamed removeBgCore; thin base64/Blob adapter). Brings 6a prior-alpha ceiling, 6b edge-band chroma suppression (CHROMA_THR 12, v5.21 band; whiteRatio gates 6b only, V2.0.7), 6c chroma-aware island removal, 6d SMOOTH_VAR-guarded always-on halo peel. Superseded achromaticPeel/despeckleAlpha calls removed (functions retained, marked). Prompt layer synced to web v5.23/v6.1: identity block completed (collar/pockets/sleeve bullets + do-not-normalize close), styleRule reconstruction-lock sentence, rule 7 title, FAILURE EXAMPLES wording, 7b alignment. trimBorderArtifacts + applyAlphaCeiling retained (cover cases the web chain does not). v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const SVL_VERSION = 'v1.25';   // v1.25 — INPUT-KIND PROMPT ROUTING (2026-08-13): per-image Claude classify now also returns input worn|flat|sketch; flat/sketch rows use the lean web-parity Render-As-Is request (buildRenderAsIsPrompt) instead of the ~400-word worn/flat/sketch triage prompt, whose rule mass diluted lighting/shading on clean inputs (v1.8.0/v2.0.6 failure class) and produced flat whites the extractor could not separate. Worn photos keep the extraction prompt; retries reuse the routed base; classify-fail defaults to worn (safe superset). v1.24 — WEB-PARITY PORT (2026-08-13): render-quality gap vs SweaterVision v2.1.1 closed by porting the canonical file's removeBg chain VERBATIM (renamed removeBgCore; thin base64/Blob adapter). Brings 6a prior-alpha ceiling, 6b edge-band chroma suppression (CHROMA_THR 12, v5.21 band; whiteRatio gates 6b only, V2.0.7), 6c chroma-aware island removal, 6d SMOOTH_VAR-guarded always-on halo peel. Superseded achromaticPeel/despeckleAlpha calls removed (functions retained, marked). Prompt layer synced to web v5.23/v6.1: identity block completed (collar/pockets/sleeve bullets + do-not-normalize close), styleRule reconstruction-lock sentence, rule 7 title, FAILURE EXAMPLES wording, 7b alignment. trimBorderArtifacts + applyAlphaCeiling retained (cover cases the web chain does not). v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
 const RULES_VERSION = '1.1';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
@@ -2877,11 +2877,14 @@ async function classifyGarmentImage(fileHandle) {
 
   const instruction =
     'Classify the garment in this product/lookbook photo. Respond with ONLY a JSON object, no other text, no markdown fences:\n' +
-    '{"garment":"top"|"bottom","body":"male"|"female"|"unisex"}\n' +
+    '{"garment":"top"|"bottom","body":"male"|"female"|"unisex","input":"worn"|"flat"|"sketch"}\n' +
     'Rules: garment is "bottom" ONLY for pants, trousers, jeans, shorts, or skirts. ' +
     'Everything else — sweaters, knit tops, cardigans, dresses, jackets, vests, full outfits where the top is the focus — is "top". ' +
     'body is the intended wearer of the garment itself: clearly menswear → "male", clearly womenswear → "female", ambiguous or gender-neutral → "unisex". ' +
-    'Judge by the garment cut and styling, not by who is modeling it.';
+    'Judge by the garment cut and styling, not by who is modeling it. ' +
+    'input is how the garment is PRESENTED in the photo: a real person is wearing it → "worn"; ' +
+    'it is on a hanger, laid flat, a packshot, or an existing ghost-mannequin product photo → "flat"; ' +
+    'it is a technical sketch, CAD flat, line drawing, or fashion illustration → "sketch".';
 
   try {
     const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -2910,7 +2913,8 @@ async function classifyGarmentImage(fileHandle) {
     const json = JSON.parse(text);
     const garment = ['top','bottom'].includes(json.garment) ? json.garment : null;
     const body    = ['male','female','unisex'].includes(json.body) ? json.body : 'unisex';
-    return garment ? { garment, body } : null;
+    const input   = ['worn','flat','sketch'].includes(json.input) ? json.input : 'worn';   // v1.25 — default worn: the extraction prompt is the safe superset
+    return garment ? { garment, body, input } : null;
   } catch (_) {
     return null;
   }
@@ -3423,8 +3427,10 @@ async function qaCheckRender(blob, originalB64 = null) {
 // Harder retry prompt — fired by the QA loop when an attempt fails. Names the
 // exact problem the QA gate found so the model knows what to fix, then appends
 // the full standard extraction prompt.
-function buildArchiveRetryPrompt(row, mannequin, garmentType, qa) {
-  const base   = buildArchiveExtractionPrompt(row, mannequin, garmentType);
+function buildArchiveRetryPrompt(row, mannequin, garmentType, qa, asIsBase) {
+  // v1.25 — retries reuse the SAME base the first attempt used (prompt routing)
+  const base   = asIsBase ? buildRenderAsIsPrompt(row, mannequin, garmentType)
+                          : buildArchiveExtractionPrompt(row, mannequin, garmentType);
   const issues = (qa && qa.issues) || [];
   let corrective = 'IMPORTANT: A PREVIOUS ATTEMPT AT THIS RENDER FAILED QUALITY CONTROL. You MUST correct it now. ';
   if (issues.includes('mannequin')) {
@@ -3917,6 +3923,7 @@ async function renderRow(row) {
         // vision classify fills it only when the filename didn't name it.
         if (row._gtSource !== 'filename') row.garmentType = cls.garment;
         row.bodyType    = cls.body;
+        row._inputKind  = cls.input || 'worn';   // v1.25 — drives prompt routing
         row._classifyFailed = false;
       } else if (row._gtSource === 'filename') {
         // v1.18 — garment type is already known from the filename, so a classify
@@ -3964,9 +3971,19 @@ async function renderRow(row) {
       const retryQa = (retrying && (qa || formResult.suspect))
         ? { pass: false, issues: [ ...((qa && qa.issues) || []), ...(formResult.suspect ? ['mannequin'] : []) ] }
         : qa;
+      // v1.25 — input-kind prompt routing (web-parity fix): flat packshots and
+      // sketches get the LEAN Render-As-Is request — the exact prompt class the
+      // web app v2.1.1 demonstrably renders these inputs with at full quality.
+      // Only true on-model photos keep the heavier extraction/triage prompt.
+      // Root cause of the white-on-white failures: ~400 words of worn/flat/sketch
+      // triage inside the mega-prompt diluted the lighting/shading rules on clean
+      // inputs (the v1.8.0/v2.0.6 rule-mass failure class), producing flat
+      // low-contrast whites that starved the (now byte-identical) extractor.
+      const asIsBase = (row._inputKind === 'flat' || row._inputKind === 'sketch');
       const archPrompt = userEditCorrective(row) + ((retrying && retryQa)
-        ? buildArchiveRetryPrompt(row, aMannequin, aGarment, retryQa)
-        : buildArchiveExtractionPrompt(row, aMannequin, aGarment));
+        ? buildArchiveRetryPrompt(row, aMannequin, aGarment, retryQa, asIsBase)
+        : (asIsBase ? buildRenderAsIsPrompt(row, aMannequin, aGarment)
+                    : buildArchiveExtractionPrompt(row, aMannequin, aGarment)));
       const { base64: aB64, mimeType: aMime } =
         await callGemini(archPrompt, rawBase64, rawMime, { mannequin: aMannequin, garmentType: aGarment });
 
