@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light v1.20</title>
+<title>SweaterVision Light v1.21</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -864,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.0">v1.20</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.21</span>
 
     <div class="header-spacer"></div>
 
@@ -1175,10 +1175,10 @@ html, body {
         <span class="form-hint">Controls torso proportions in the ghost mannequin render</span>
       </div>
         <div style="display:flex;gap:6px">
-          <input class="form-input" id="input-gemini-model" type="text" placeholder="gemini-2.5-flash-image" oninput="saveKeys()" style="font-family:var(--font-mono);font-size:11px;flex:1" />
+          <input class="form-input" id="input-gemini-model" type="text" placeholder="gemini-3.1-flash-image" oninput="saveKeys()" style="font-family:var(--font-mono);font-size:11px;flex:1" />
           <button class="btn-sm" onclick="detectGeminiModels()" id="btn-detect" style="white-space:nowrap;flex-shrink:0">Detect →</button>
         </div>
-        <span class="form-hint">Paste model string from v5.4, or click Detect to list models on your key. Pinned versions only — never "-latest" (RENDER_RULES §3). Migration to gemini-3.1-flash-image required before 2026-10-02.</span>
+        <span class="form-hint">Pinned default: gemini-3.1-flash-image via the Interactions API (RENDER_RULES 1.1 §2). Pinned versions only — never "-latest". Leave blank to use the pinned default; generateContent models (gemini-2.5-flash-image) were shut down 2026-10-02.</span>
         <div id="model-list" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:var(--r);overflow:hidden">
           <div style="padding:6px 8px;background:var(--surface);border-bottom:1px solid var(--line);display:flex;gap:6px;align-items:center">
             <input id="model-filter" type="text" placeholder="Filter… (try: flash, imagen)" oninput="filterModels(this.value)"
@@ -1441,19 +1441,23 @@ function buildColorContext(hex) {
 /* ════════════════════════════════════════════════════════════════
    RENDER PIPELINE — file utils, Claude, Gemini, removeBg
 ════════════════════════════════════════════════════════════════ */
-const CLAUDE_MODEL = 'claude-sonnet-4-6';
-// Gemini model is set in Settings (⚙) and stored in localStorage as svs_gemini_model
-// Default: gemini-2.5-flash-image — current pinned Gemini image model (RENDER_RULES §3:
-// pinned versions only, never "-latest"; migration to gemini-3.1-flash-image required
-// before the 2026-10-02 shutdown, gated by the benchmark harness).
+// ── RENDER_RULES 1.1 §2 model pins — model/config changes touch ONLY these four
+// constants (§8; call-site edits for a model swap are a spec violation).
+// Pinned stable strings only — never "-latest" / "-preview" aliases.
+const RENDER_MODEL          = 'gemini-3.1-flash-image';  // Interactions API migration shipped v1.21 (generateContent shut down 2026-10-02)
+const RENDER_IMAGE_SIZE     = '1K';                      // 896×1200 @ 3:4; '2K' pending D6 benchmark
+const GEMINI_THINKING_LEVEL = 'minimal';                 // pinned for determinism
+const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no date suffix exists)
+// Gemini model may still be overridden in Settings (⚙, localStorage svs_gemini_model);
+// RENDER_MODEL is the pinned default when no override is set.
 
 /* ════════════════════════════════════════════════════════════════
    v1.14 CONFIG — fail-closed hardening, residual-form gate, autonomy
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.20';   // v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
-const RULES_VERSION = '1.0';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
+const SVL_VERSION = 'v1.21';   // v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const RULES_VERSION = '1.1';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
 //   'block' — a failed preflight hard-stops the batch (default; "no exceptions")
@@ -1691,9 +1695,10 @@ Base instruction to enhance: Perform a professional 3D ghost mannequin e-commerc
     },
     body: JSON.stringify({
       model: CLAUDE_MODEL,
-      max_tokens: 400,
+      max_tokens: 1024,   // §3: Sonnet 5 adaptive thinking bills against the budget — 400 starves the ~130-word output
       system: systemPrompt,
       messages: [{ role: 'user', content: userMsg }]
+      // §3: NO temperature / top_k / top_p — Sonnet 5 rejects manual sampling params
     })
   });
 
@@ -1702,13 +1707,14 @@ Base instruction to enhance: Perform a professional 3D ghost mannequin e-commerc
     throw new Error(`Claude ${res.status}: ${t}`);
   }
   const data = await res.json();
-  return data.content[0]?.text?.trim() || '';
+  // §3: locate the text block by TYPE, never by position — a thinking block may occupy content[0]
+  return data.content?.find(b => b.type === 'text')?.text?.trim() || '';
 }
 
 // ── Gemini → generated image (v5.4 prompt rules, exact copy) ─────
 async function callGemini(prompt, rawBase64, rawMime, options = {}) {
   const key         = localStorage.getItem('svs_gemini_key')   || '';
-  const model       = localStorage.getItem('svs_gemini_model') || 'gemini-2.5-flash-image';
+  const model       = localStorage.getItem('svs_gemini_model') || RENDER_MODEL;   // §2 pinned default
   const mannequin   = (options.mannequin    || localStorage.getItem('svs_mannequin') || 'unisex').toLowerCase();
   const garmentType = (options.garmentType  || localStorage.getItem('svs_garment')   || 'top').toLowerCase();
   const isBottom    = garmentType === 'bottom';
@@ -1730,9 +1736,10 @@ async function callGemini(prompt, rawBase64, rawMime, options = {}) {
       `Straight front-facing camera, symmetrical, centered. Natural leg drape and fabric weight.`
     : `STYLE: High-resolution photorealistic 3D E-commerce Ghost Mannequin Product Shot. MANNEQUIN TYPE: ${mannequinSpec}. The garment must look natural with realistic folds and weight. The mannequin form underneath gives it 3D volume but is 100% invisible — only the garment fabric is visible. CRITICAL: No neck post, no visible torso form, no mannequin stand. The neck opening must be a clean open hollow circle showing only the inside back collar fabric. Reconstruct with 3D volume, rounded shoulders, natural chest contour. If input is a flat sketch, convert to photorealistic finished garment with high-fidelity texture. Straight direct front-facing camera, symmetrical, centered.`;
 
+  // §2 Interactions typed input blocks (was contents/parts + inline_data)
   const parts = [
-    { inline_data: { data: rawBase64, mime_type: rawMime } },
-    { text:
+    { type: 'image', data: rawBase64, mime_type: rawMime },
+    { type: 'text', text:
 `AI FASHION EDITOR: FOCUS: Only modify the "${targetNoun(garmentType)}".
 REQUEST: "${prompt}".
 
@@ -1809,63 +1816,54 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
     }
   ];
 
-  // Build request body with or without responseModalities.
-  // Some model endpoints reject the field with 400 "Unknown name responseModalities".
-  // In that case we silently retry without it so the call can still succeed.
-  const buildBody = (includeModalities) => JSON.stringify({
-    contents: [{ parts }],  // array format required by current Gemini API
-    // responseModalities order: IMAGE first per spec (TEXT,IMAGE order is rejected by some endpoints)
-    // imageConfig.aspectRatio is the ONLY thing that actually enforces 3:4 — Gemini ignores prose aspect ratio
-    ...(includeModalities ? { generationConfig: { responseModalities: ['IMAGE', 'TEXT'], imageConfig: { aspectRatio: '3:4' } } } : {})
+
+  // ── RENDER_RULES 1.1 §2 — Interactions API (generateContent shut down 2026-10-02) ──
+  // aspect_ratio + image_size are STRUCTURED API parameters (enforcement hierarchy §1),
+  // pinned explicitly — the API's "match input size" default is disallowed on the render
+  // path. response_format.mime_type MUST be 'image/jpeg' (the ONLY accepted value;
+  // 'image/png' is a 4xx). JPEG raw output is acceptable: alpha is created in code
+  // (§5 Step 3) and Step 6b edge-band chroma suppression absorbs JPEG edge noise.
+  // All DELIVERED files remain PNG via re-encode downstream.
+  const body = JSON.stringify({
+    model,
+    input: parts,
+    response_format: {
+      type: 'image',
+      mime_type: 'image/jpeg',
+      aspect_ratio: '3:4',
+      image_size: RENDER_IMAGE_SIZE
+    },
+    generation_config: { thinking_level: GEMINI_THINKING_LEVEL }   // pinned for determinism (§2)
   });
 
-  // Try v1 first (current image models use v1), v1beta as fallback
-  const endpoints = [
-    `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${key}`,
-    `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`,
-  ];
+  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },   // header auth — never ?key= (§2)
+    body
+  });
 
-  let lastErr;
-  for (const url of endpoints) {
-    // First attempt — include responseModalities (required for image-capable models)
-    let res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(true) });
+  if (res.status === 429) throw new Error('429: Rate limited — will retry');
+  if (!res.ok) {
+    const t = await res.text().catch(() => String(res.status));
+    throw new Error(`Gemini ${res.status}: ${t} — check the model in Settings (⚙)`);
+  }
 
-    // If the model/endpoint doesn't recognise responseModalities, silently retry without it.
-    // If the model explicitly can't generate images, surface a clean actionable message.
-    if (res.status === 400) {
-      const errText = await res.text().catch(() => '');
-      if (errText.includes('responseModalities')) {
-        // Field not known on this endpoint — retry without it
-        res = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: buildBody(false) });
-      } else if (errText.toLowerCase().includes('response modalities') || errText.toLowerCase().includes('does not support')) {
-        // Model is text-only — give a clear fix instruction
-        throw new Error('Model "' + model + '" does not support image generation. Open Settings → Detect → select a green-dot model (gemini-2.5-flash-image).');
-      } else {
-        throw new Error(`Gemini 400: ${errText}`);
+  const data = await res.json();
+  // §2 response parsing — BOTH branches required.
+  let img = data.output_image?.data || null;           // 1) convenience property
+  if (!img) {                                           // 2) manual steps walk
+    let txt = '';
+    for (const step of data.steps || []) {
+      if (step.type !== 'model_output') continue;       // thought steps: NEVER read (interim images live in step.summary)
+      for (const b of step.content || []) {
+        if (b.type === 'image' && b.data) img = b.data;           // keep the LAST image block
+        else if (b.type === 'text' && b.text) txt += b.text;
       }
     }
-
-    if (res.status === 429) throw new Error('429: Rate limited — will retry');
-    if (res.status === 404) {
-      const t = await res.text().catch(() => '');
-      lastErr = new Error(`Gemini 404 (${url.includes('v1beta') ? 'v1beta' : 'v1'}): ${t}`);
-      continue;
-    }
-    if (!res.ok) {
-      const t = await res.text().catch(() => res.status);
-      throw new Error(`Gemini ${res.status}: ${t}`);
-    }
-
-    const data  = await res.json();
-    const cand  = data.candidates?.[0];
-    if (!cand) throw new Error('AI returned no candidates — check safety filters');
-    for (const p of cand.content?.parts || []) {
-      if (p.inlineData) return { base64: p.inlineData.data, mimeType: p.inlineData.mimeType || 'image/png' };
-    }
-    const reason = cand.finishReason || 'unknown';
-    throw new Error(`Gemini returned no image (${reason}) — try a different model or check safety filters`);
+    if (!img && txt) throw new Error('AI returned text instead of an image: ' + txt.slice(0, 100));
   }
-  throw new Error((lastErr?.message || 'Gemini 404') + ' — open Settings → Detect to find the right model');
+  if (!img) throw new Error('No image returned' + (data.status ? ` (status: ${data.status})` : ''));
+  return { base64: img, mimeType: 'image/jpeg' };      // raw output is JPEG as of RULES 1.1; delivery stays PNG
 }
 
 // ── Background removal — v5.4 safe-zone algorithm ────────────────
@@ -2413,7 +2411,7 @@ async function classifyGarmentImage(fileHandle) {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 60,
+        max_tokens: 1024,   // §3: adaptive thinking bills against the budget
         messages: [{
           role: 'user',
           content: [
@@ -2425,7 +2423,7 @@ async function classifyGarmentImage(fileHandle) {
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const text = (data.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g, '').trim();   // §3: by type, never [0]
     const json = JSON.parse(text);
     const garment = ['top','bottom'].includes(json.garment) ? json.garment : null;
     const body    = ['male','female','unisex'].includes(json.body) ? json.body : 'unisex';
@@ -2528,7 +2526,7 @@ function buildArchiveExtractionPrompt(row, mannequin, garmentType) {
 
 /* ════════════════════════════════════════════════════════════════
    v1.8 — ARCHIVE QA GATE + CLEANUP  (rule coverage widened in v1.9)
-   gemini-2.5-flash-image does not reliably honor "remove the mannequin"
+   the render model does not reliably honor "remove the mannequin"
    or "pure white background" in a single pass on hard inputs. These
    helpers (1) strip stray background fragments the keyer left behind,
    (2) ask Claude vision whether the finished render meets the full
@@ -2920,13 +2918,13 @@ async function qaCheckRender(blob, originalB64 = null) {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 150,
+        max_tokens: 1024,   // §3: adaptive thinking bills against the budget
         messages: [{ role: 'user', content }]
       })
     });
     if (!res.ok) return null;
     const data = await res.json();
-    const text = (data.content?.[0]?.text || '').replace(/```json|```/g, '').trim();
+    const text = (data.content?.find(b => b.type === 'text')?.text || '').replace(/```json|```/g, '').trim();   // §3: by type, never [0]
     const json = JSON.parse(text);
     const KNOWN = ['mannequin', 'background', 'angle', 'hanger', 'garment', 'color'];
     const issues = Array.isArray(json.issues) ? json.issues.filter(t => KNOWN.includes(t)) : [];
@@ -3003,7 +3001,7 @@ async function claudePreflight() {
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 4,
+        max_tokens: 1024,   // §3: adaptive thinking bills against the budget — tiny budgets starve Sonnet 5
         messages: [{ role: 'user', content: 'ok' }]
       })
     });
@@ -3406,7 +3404,7 @@ async function maybeAutorun() {
 // v1.20 — outputs land in the Output subfolder mirroring row.relDir.
 async function renderRow(row) {
   row.status = 'rendering'; row.error = null;
-  row.renderModel = localStorage.getItem('svs_gemini_model') || 'gemini-2.5-flash-image';   // v1.19 §4.5
+  row.renderModel = localStorage.getItem('svs_gemini_model') || RENDER_MODEL;   // v1.19 §4.5 / v1.21 §2 pin
   renderTable();
 
   // Resolve body type and garment type — row value beats global default
@@ -5209,7 +5207,7 @@ async function detectGeminiModels() {
 
     const imageKeywords = ['flash','imagen','image','vision'];
     window._allGeminiModels = (data.models || [])
-      .filter(m => (m.supportedGenerationMethods||[]).includes('generateContent'))
+      .filter(m => { const gm = m.supportedGenerationMethods||[]; return gm.includes('generateContent') || gm.includes('interactions') || /image/i.test(m.name||''); })   // v1.21 — Interactions-era models may not list generateContent
       .sort((a, b) => {
         const sA = imageKeywords.filter(k => a.name.toLowerCase().includes(k)).length;
         const sB = imageKeywords.filter(k => b.name.toLowerCase().includes(k)).length;
@@ -5218,7 +5216,7 @@ async function detectGeminiModels() {
 
     if (!window._allGeminiModels.length) {
       document.getElementById('model-list-inner').innerHTML =
-        `<div style="padding:10px 12px;font-size:11px;color:var(--ink-3)">No generateContent models found on this key</div>`;
+        `<div style="padding:10px 12px;font-size:11px;color:var(--ink-3)">No image-capable models found on this key</div>`;
     } else {
       // Default filter: show flash/imagen models first — most likely to support image generation
       document.getElementById('model-filter').value = 'flash';
