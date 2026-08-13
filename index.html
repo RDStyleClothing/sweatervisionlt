@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light v1.23</title>
+<title>SweaterVision Light v1.24</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -864,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.23</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.24</span>
 
     <div class="header-spacer"></div>
 
@@ -1456,7 +1456,7 @@ const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no da
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.23';   // v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const SVL_VERSION = 'v1.24';   // v1.24 — WEB-PARITY PORT (2026-08-13): render-quality gap vs SweaterVision v2.1.1 closed by porting the canonical file's removeBg chain VERBATIM (renamed removeBgCore; thin base64/Blob adapter). Brings 6a prior-alpha ceiling, 6b edge-band chroma suppression (CHROMA_THR 12, v5.21 band; whiteRatio gates 6b only, V2.0.7), 6c chroma-aware island removal, 6d SMOOTH_VAR-guarded always-on halo peel. Superseded achromaticPeel/despeckleAlpha calls removed (functions retained, marked). Prompt layer synced to web v5.23/v6.1: identity block completed (collar/pockets/sleeve bullets + do-not-normalize close), styleRule reconstruction-lock sentence, rule 7 title, FAILURE EXAMPLES wording, 7b alignment. trimBorderArtifacts + applyAlphaCeiling retained (cover cases the web chain does not). v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
 const RULES_VERSION = '1.1';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
@@ -1734,7 +1734,7 @@ async function callGemini(prompt, rawBase64, rawMime, options = {}) {
       `The lower-body mannequin form gives the garment 3D volume but is 100% invisible. ` +
       `Waistband floats naturally. No visible stand, clips, or support structure. ` +
       `Straight front-facing camera, symmetrical, centered. Natural leg drape and fabric weight.`
-    : `STYLE: High-resolution photorealistic 3D E-commerce Ghost Mannequin Product Shot. MANNEQUIN TYPE: ${mannequinSpec}. The garment must look natural with realistic folds and weight. The mannequin form underneath gives it 3D volume but is 100% invisible — only the garment fabric is visible. CRITICAL: No neck post, no visible torso form, no mannequin stand. The neck opening must be a clean open hollow circle showing only the inside back collar fabric. Reconstruct with 3D volume, rounded shoulders, natural chest contour. If input is a flat sketch, convert to photorealistic finished garment with high-fidelity texture. Straight direct front-facing camera, symmetrical, centered.`;
+    : `STYLE: High-resolution photorealistic 3D E-commerce Ghost Mannequin Product Shot. MANNEQUIN TYPE: ${mannequinSpec}. The garment must look natural with realistic folds and weight. The mannequin form underneath gives it 3D volume but is 100% invisible — only the garment fabric is visible. CRITICAL: No neck post, no visible torso form, no mannequin stand. The neck opening must be a clean open hollow circle showing only the inside back collar fabric. Reconstruct with 3D volume, rounded shoulders, natural chest contour. Reconstruction adds 3D body volume and drape ONLY — it must NOT change the garment's closure type, collar/neckline style, button count, plackets, or pockets; those are reproduced exactly from the input. If input is a flat sketch, convert to photorealistic finished garment with high-fidelity texture. Straight direct front-facing camera, symmetrical, centered.`;
 
   // §2 Interactions typed input blocks (was contents/parts + inline_data)
   const parts = [
@@ -1773,7 +1773,7 @@ CRITICAL RULES (ABSOLUTE COMPLIANCE REQUIRED - NO EXCEPTIONS):
 1. ${bgRule}
 2. FORCE TRUE GHOST MANNEQUIN — ZERO VISIBLE MANNEQUIN PARTS: The garment MUST appear as if worn by a completely invisible ghost. CRITICAL — there must be absolutely ZERO visible mannequin components: no neck post, no neck stand, no gray/white plastic cylinder, no torso form outline, no shoulder supports, no base, no clips, no rods, no fabric-covered dressmaker's form, no tailor's bust, no dress form of any color. The ONLY thing visible must be the garment fabric itself floating in 3D space. The neck opening must be wide, fully open, and hollow showing only the inside back collar fabric. The body must have natural 3D volume and chest depth from the invisible ghost form underneath — but the form itself is 100% invisible. If you are considering showing any part of a mannequin body, stand, or support — DO NOT. Render ONLY the garment.
 
-FAILURE EXAMPLES TO AVOID (each is a render failure — DO NOT produce any of them):
+FAILURE EXAMPLES TO AVOID (each of these is a render failure — DO NOT produce any of them):
 ✗ A visible white, cream, or beige fabric-covered dress form / tailor's bust / dressmaker's mannequin rising above a strapless or sleeveless garment
 ✗ A solid colored neck cylinder (gray, white, or otherwise) protruding from the collar opening
 ✗ A visible plastic mannequin head, neck, or shoulders above any garment neckline
@@ -1787,8 +1787,8 @@ EXPOSED-AREA RULE: For strapless, sleeveless, off-shoulder, crop, backless, tube
 4. ABSOLUTELY NO HANGERS OR TAGS: Completely remove any hangers, hooks, wires, price tags, barcode tags, sizing tags, cords, background items, or apparel labels (internal or external). The garment must float cleanly on its own.
 5. NO SHADOWS AT ALL: There must be absolutely NO drop shadows under the hem, NO floor shadows, NO soft ambient occlusion at the base of the garment, NO gradient darkening around the silhouette, NO shadow halos under hemlines, cords, or collars. Every single pixel that is not part of the garment fabric itself must be flat, pure, sterile solid white (#FFFFFF).
 6. ${styleRule}
-7. NO MODEL OR HUMAN PARTS — ABSOLUTELY NO MANNEQUIN HEAD: No human faces, skin, arms, legs, models, or mannequin heads anywhere in the image. The neck opening of the garment must show only the hollow interior fabric — NO gray plastic neck post, NO mannequin head form, NO bust form visible above the collar. For strapless/sleeveless/crop/backless/bustier garments: NO fabric dress form, NO tailor's mannequin, NO dressmaker's bust above the neckline — that area must be pure #FFFFFF background only.
-7b. REMOVE ANY LAYERED UNDERGARMENT: If a separate garment (t-shirt, tank, camisole, blouse) is worn underneath the target garment and visible through any opening, remove it completely — it is as foreign as the model's body. Through any opening show only the target garment's own hollow interior (the inside of its opposite/back panel, inner facing, seams) — never an inner layer, never skin, never a flat white patch standing in for the missing layer.
+7. NO MODEL, HUMAN PARTS, MANNEQUIN HEAD, OR BUST FORM: No human faces, skin, arms, legs, models, or mannequin heads anywhere in the image. The neck opening of the garment must show only the hollow interior fabric — NO gray plastic neck post, NO mannequin head form, NO bust form visible above the collar. For strapless/sleeveless/crop/backless/bustier garments: NO fabric dress form, NO tailor's mannequin, NO dressmaker's bust above the neckline — that area must be pure #FFFFFF background only.
+7b. REMOVE ANY LAYERED UNDERGARMENT: If a separate garment (t-shirt, tank, camisole, blouse) is worn underneath the target and visible through any opening, remove it completely — it is as foreign as the model's body. Through any opening show only the target garment's own hollow interior (the inside of its opposite/back panel, inner facing, seams) — never an inner layer, never skin, never a flat white patch standing in for the missing layer.
 8. DIMENSIONS: Strictly align to a 3:4 portrait aspect ratio (1200px width, 1600px height). The garment must be beautifully centered with a comfortable 15% margin from all borders to prevent clipping.
 9. ABSOLUTE COLOR FIDELITY: If the request includes changing the color/recoloring (e.g., mentions changing color, paint, hex code, or Pantone), you MUST completely overrule and throw away the old, original base colors and undertones of the garment. Do not tint or blend the old color into the new one. Paint the entire garment's fabric cleanly, evenly, and precisely with the requested target hex or Pantone shade as a fresh new dye. Keep the fabric rendered under bright, diffuse, high-key commercial advertising studio lighting. Folds and shading must be extremely soft, subtle, and natural; under no circumstances allow heavy gray, black, or muddy shadows to darken or mute the garment's overall fabric color below the requested target swatch value. The main body/flat surface colors of the garment must match the user's requested swatch color perfectly.
 
@@ -1812,6 +1812,14 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
     photographed. NEVER invent solid contrast trim (e.g. white hem
     or cuffs) not in the input, and NEVER add ties, drawstrings,
     hanging strips, tabs, or panels not in the input.
+  • Collar / neckline style (camp/Cuban, polo, crew, V-neck, etc.) —
+    keep identical. Do NOT swap one collar type for another.
+  • Pockets — same presence, count, and placement.
+  • Sleeve length and cuff/hem finish — keep identical unless the
+    request explicitly changes them.
+► If you are tempted to "tidy up" or "normalize" the garment into a
+  more typical style, DO NOT. Faithfully reproduce the original
+  construction. Only the explicitly requested modification may differ.
 ═══════════════════════════════════════════════════════════════`
     }
   ];
@@ -1868,108 +1876,183 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
   return { base64: img, mimeType: 'image/jpeg' };      // raw output is JPEG as of RULES 1.1; delivery stays PNG
 }
 
-// ── Background removal — v5.4 safe-zone algorithm ────────────────
-// RENDER_RULES §4.1 key principle: only remove pixels reachable from the
-// image edges (edge-seeded flood fill). Interior pixels are NEVER removed
-// even if they match background color — protects white/cream/sage garments.
+// ── Background removal — web-app v2.1.1 chain (VERBATIM PORT, v1.24) ─
+// RENDER_RULES §4/§5: edge-seeded flood + anchor/safe-zone BFS, plus the
+// evolved post-passes: 6a prior-alpha ceiling, 6b edge-band chroma
+// suppression (CHROMA_THR 12 per web v5.21; whiteRatio gates 6b ONLY per
+// web V2.0.7), 6c chroma-aware detached-island removal, 6d achromatic halo
+// peel (SMOOTH_VAR interior-variance guard per web V1.7.2; always runs).
+// Ported wholesale from SweaterVision_v2_1_1.html removeBg — the previous
+// Light chain (v5.4 core + separate v1.17/v1.19 passes) had drifted from
+// the canonical implementation and under-performed on white/light garments
+// (torn edges / ghosting artifacts). Verbatim body; only the name changed
+// to removeBgCore. The thin adapter below keeps the (base64, mime) → Blob
+// call-site contract unchanged.
 function removeBg(base64, mimeType) {
-  return new Promise(resolve => {
-    const img = new Image();
-    img.onload = () => {
-      const cv = document.createElement('canvas');
-      cv.width = img.naturalWidth; cv.height = img.naturalHeight;
-      const ctx = cv.getContext('2d', { willReadFrequently: true });
-      ctx.drawImage(img, 0, 0);
-      const W = cv.width, H = cv.height;
-      const id = ctx.getImageData(0, 0, W, H);
-      const d  = id.data;
+  return removeBgCore(`data:${mimeType};base64,${base64}`, null, {})
+    .then(dataUrl => fetch(dataUrl).then(r => r.blob()).catch(() => null));
+}
 
-      // 1. Sample bg from 8 perimeter blocks, use brightest
-      function sampleBlock(sx, sy, sz) {
+async function removeBgCore(b64, priorAlpha=null, opts={}){
+  // v2.0.8 — opts.aggressive: manual "Scrub BG" variant (user-invoked, never
+  // automatic). Bypasses the two WHOLE-PASS skips only:
+  //   • 6b runs even when whiteRatio ≥ 0.35 (white-garment carve-out off)
+  //   • 6d runs even when the smooth-garment interior-variance guard trips
+  // Every PER-PIXEL gate stays live (chroma protects coloured garment, the
+  // variance + smoothness gates halt the peel at knit texture / edge steps,
+  // luma floor protects mid/dark tones) and the 60% runaway abort remains.
+  // Safe because it is manual + non-destructive: the result lands as a NEW
+  // history version superseding the flawed roll; the original stays in cell
+  // history for Make-current revert.
+  // v2.0.6 — opts.sketchSafe: Sketch-mode variant. The core edge-seeded
+  // flood fill + safe-zone BFS runs unchanged (the closed black outline
+  // stops the fill, so the flat's interior white fill is preserved as
+  // opaque), but post-passes 6b and 6c are skipped:
+  //   6b would fade legit interior white sitting within 3px of the
+  //      transparent page through a thin (1–2px) outline stroke;
+  //   6c largest-component keep would delete legitimately detached line
+  //      marks (button circles, dashed topstitching, size-label boxes).
+  // Safe-zone-aware background removal.
+  // v5.4: anchor + safe-zone BFS to protect interior near-bg regions.
+  // v5.20 adds two post-passes after the core alpha is computed:
+  //   6a. Prior-alpha persistence — when `priorAlpha` is supplied (input
+  //       was a prior render), use its dilated silhouette as a ceiling on
+  //       the new alpha. Halos cannot exist outside the dilated prior
+  //       silhouette. Dilation tolerance is 6px to allow for minor pose
+  //       drift the model may introduce.
+  //   6b. Edge-band chroma suppression — colorless, near-white pixels
+  //       within 3px of a transparent region are halo artifacts (legit
+  //       garment edges have chroma). Faded to transparent. Auto-skipped
+  //       when the garment itself is predominantly white (would eat edges).
+  //
+  // Core strategy (unchanged from v5.4):
+  //   1. Sample bg color from 8 perimeter points; brightest = bgRGB.
+  //   2. Anchor mask = pixels clearly not bg-colored (distance > THR).
+  //   3. Safe zone = BFS from anchors, blocked by bg-like pixels.
+  //   4. Edge-seeded flood-fill marks bg, skipping the safe zone.
+  //   5. Soft 1-pixel feathering at bg/garment boundary.
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{
+      const c=document.createElement('canvas');
+      c.width=img.width; c.height=img.height;
+      const ctx=c.getContext('2d');
+      ctx.drawImage(img,0,0);
+      const id=ctx.getImageData(0,0,c.width,c.height);
+      const d=id.data; const W=c.width, H=c.height;
+
+      // ── Step 1: 8-point perimeter sample, brightest = bgRGB ──────────
+      function sampleBlock(sx,sy,sz){
         let r=0,g=0,b=0,n=0;
-        for (let dy=0;dy<sz;dy++) for (let dx=0;dx<sz;dx++) {
-          const px=Math.min(W-1,sx+dx), py=Math.min(H-1,sy+dy), i=(py*W+px)*4;
+        for(let dy=0;dy<sz;dy++) for(let dx=0;dx<sz;dx++){
+          const px=Math.min(W-1,sx+dx), py=Math.min(H-1,sy+dy);
+          const i=(py*W+px)*4;
           r+=d[i]; g+=d[i+1]; b+=d[i+2]; n++;
         }
-        return [r/n,g/n,b/n];
+        return [r/n, g/n, b/n];
       }
       const BS=10;
       const samples=[
-        sampleBlock(0,0,BS),        sampleBlock(W-BS,0,BS),
-        sampleBlock(0,H-BS,BS),     sampleBlock(W-BS,H-BS,BS),
-        sampleBlock(W/2-BS/2,0,BS), sampleBlock(W/2-BS/2,H-BS,BS),
-        sampleBlock(0,H/2-BS/2,BS), sampleBlock(W-BS,H/2-BS/2,BS),
+        sampleBlock(0,0,BS),                          sampleBlock(W-BS,0,BS),
+        sampleBlock(0,H-BS,BS),                       sampleBlock(W-BS,H-BS,BS),
+        sampleBlock(Math.floor(W/2)-BS/2,0,BS),
+        sampleBlock(Math.floor(W/2)-BS/2,H-BS,BS),
+        sampleBlock(0,Math.floor(H/2)-BS/2,BS),
+        sampleBlock(W-BS,Math.floor(H/2)-BS/2,BS)
       ];
       let bgR=0,bgG=0,bgB=0,maxBr=-1;
-      for (const s of samples) {
+      for(const s of samples){
         const br=(s[0]+s[1]+s[2])/3;
-        if (br>maxBr){maxBr=br;bgR=s[0];bgG=s[1];bgB=s[2];}
+        if(br>maxBr){maxBr=br;bgR=s[0];bgG=s[1];bgB=s[2];}
       }
       const bgBr=(bgR+bgG+bgB)/3;
-      const THR = bgBr>200?42:bgBr>128?38:45;
+
+      // ── Step 2: Threshold for "is this pixel bg-colored?" ────────────
+      const THR = bgBr > 200 ? 42 : bgBr > 128 ? 38 : 45;
 
       function colorDistToBg(r,g,b){
-        const dr=r-bgR,dg=g-bgG,db=b-bgB;
+        const dr=r-bgR, dg=g-bgG, db=b-bgB;
         return Math.sqrt(dr*dr+dg*dg+db*db);
       }
 
-      // 2. Anchor mask — pixels clearly NOT bg-colored
+      // ── Step 3: Anchor mask — pixels clearly NOT bg-colored ──────────
       const anchor=new Uint8Array(W*H);
-      for (let i=0;i<W*H;i++){
+      for(let i=0;i<W*H;i++){
         const pi=i*4;
-        if(colorDistToBg(d[pi],d[pi+1],d[pi+2])>THR) anchor[i]=1;
+        if(colorDistToBg(d[pi],d[pi+1],d[pi+2]) > THR){
+          anchor[i]=1;
+        }
       }
 
-      // 3. Safe zone — BFS from anchors, blocked by near-bg pixels
-      const PROP_THR=Math.max(6,THR/5);
+      // ── Step 4: Safe zone — unbounded BFS from anchors, blocked by bg
+      // PROP_THR is the "bg-noise tolerance": pixels closer to bgRGB than
+      // this count as bg-like obstacles and stop propagation. Setting it
+      // well below THR allows the safe zone to fill interior near-bg
+      // regions (white stripes) while still being blocked by the clean
+      // bg ring (where pixels are within ~5 distance of bgRGB).
+      const PROP_THR = Math.max(6, THR/5);
       const safe=new Uint8Array(W*H);
       const sq=new Int32Array(W*H*2);
-      let sh=0,st=0;
-      for (let i=0;i<W*H;i++){
-        if(anchor[i]){safe[i]=1;sq[st++]=i%W;sq[st++]=(i/W)|0;}
+      let sh=0, st=0;
+      for(let i=0;i<W*H;i++){
+        if(anchor[i]){
+          safe[i]=1;
+          sq[st++]=i%W;
+          sq[st++]=(i/W)|0;
+        }
       }
       while(sh<st){
-        const cx=sq[sh++],cy=sq[sh++];
-        for (const [nx,ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]){
+        const cx=sq[sh++], cy=sq[sh++];
+        const ns=[[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]];
+        for(const [nx,ny] of ns){
           if(nx<0||ny<0||nx>=W||ny>=H) continue;
           const ni=ny*W+nx;
           if(safe[ni]) continue;
           const pi=ni*4;
-          if(colorDistToBg(d[pi],d[pi+1],d[pi+2])<=PROP_THR) continue;
-          safe[ni]=1;sq[st++]=nx;sq[st++]=ny;
+          if(colorDistToBg(d[pi],d[pi+1],d[pi+2]) <= PROP_THR) continue;
+          safe[ni]=1;
+          sq[st++]=nx;
+          sq[st++]=ny;
         }
       }
 
-      // 4. Edge-seeded flood fill — skip safe zone
+      // ── Step 5: Edge-seeded flood fill for bg removal, skip safe zone
       const vis=new Uint8Array(W*H);
       const queue=new Int32Array(W*H*2);
-      let qHead=0,qTail=0;
+      let qHead=0, qTail=0;
+
       function seed(x,y){
         const idx=y*W+x;
         if(vis[idx]||safe[idx]) return;
         const pi=idx*4;
-        if(d[pi+3]<10||colorDistToBg(d[pi],d[pi+1],d[pi+2])<THR){
-          vis[idx]=1;queue[qTail++]=x;queue[qTail++]=y;
+        if(d[pi+3]<10 || colorDistToBg(d[pi],d[pi+1],d[pi+2])<THR){
+          vis[idx]=1;
+          queue[qTail++]=x;
+          queue[qTail++]=y;
         }
       }
-      for(let x=0;x<W;x++){seed(x,0);seed(x,H-1);}
-      for(let y=1;y<H-1;y++){seed(0,y);seed(W-1,y);}
+
+      for(let x=0;x<W;x++){ seed(x,0); seed(x,H-1); }
+      for(let y=1;y<H-1;y++){ seed(0,y); seed(W-1,y); }
+
       while(qHead<qTail){
-        const cx=queue[qHead++],cy=queue[qHead++];
-        for(const [nx,ny] of [[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]]){
+        const cx=queue[qHead++], cy=queue[qHead++];
+        const ns=[[cx-1,cy],[cx+1,cy],[cx,cy-1],[cx,cy+1]];
+        for(const [nx,ny] of ns){
           if(nx<0||ny<0||nx>=W||ny>=H) continue;
           seed(nx,ny);
         }
       }
 
-      // 5. Soft 1-pixel feathering at boundary
+      // ── Step 6: Soft 1-pixel feathering at bg/garment boundary ──────
       const alpha=new Float32Array(W*H);
       for(let i=0;i<W*H;i++) alpha[i]=vis[i]?0:1;
       for(let y=1;y<H-1;y++){
         for(let x=1;x<W-1;x++){
           const i=y*W+x;
-          if(!vis[i]&&!safe[i]){
-            if(vis[i-1]||vis[i+1]||vis[i-W]||vis[i+W]){
+          if(!vis[i] && !safe[i]){
+            const hasBg = vis[i-1]||vis[i+1]||vis[i-W]||vis[i+W];
+            if(hasBg){
               const pi=i*4;
               const dist=colorDistToBg(d[pi],d[pi+1],d[pi+2]);
               alpha[i]=Math.max(0,Math.min(1,(dist-(THR*0.6))/(THR*0.4)));
@@ -1977,28 +2060,426 @@ function removeBg(base64, mimeType) {
           }
         }
       }
-      for(let i=0;i<W*H;i++) d[i*4+3]=Math.round(alpha[i]*255);
 
-      // v1.16 — perimeter diagnostic: if >25% of the image perimeter is still
-      // highly opaque after extraction, the bg strip likely failed. Log a
-      // warning with the sampled bg color; deliberately do NOT auto-apply an
-      // aggressive strip (risk of eating dark pattern elements like plaid
-      // black squares).
-      {
-        let perim=0, opq=0;
-        const chk=i=>{perim++;if(d[i*4+3]>200)opq++;};
-        for(let x=0;x<W;x++){chk(x);chk((H-1)*W+x);}
-        for(let y=1;y<H-1;y++){chk(y*W);chk(y*W+W-1);}
-        if(perim>0 && opq/perim>0.25){
-          console.warn(`[SVL] Perimeter diagnostic: ${(opq/perim*100).toFixed(0)}% of perimeter still opaque after bg removal — sampled bg rgb(${Math.round(bgR)},${Math.round(bgG)},${Math.round(bgB)}). Background may not be pure white; no aggressive strip applied.`);
+      // ── v5.20 Step 6a: Prior-alpha persistence ──────────────────────
+      // When the input image already had a transparent background (i.e.,
+      // it was a prior render fed back in for a serial edit), use its
+      // silhouette as a ceiling on the new alpha. Dilated by 6px to tolerate
+      // minor pose drift the model may introduce between iterations.
+      // Halos outside the dilated prior silhouette are forced transparent.
+      // v1.7.7 — Dimension-mismatch rescale. Generation-time normalization
+      // stores all renders at 1200×1600, but Gemini's fresh output arrives at
+      // its native 3:4 size — so the prior mask and the new render no longer
+      // share dimensions and the exact-match guard below would silently skip
+      // 6a on every serial edit. Both are 3:4, so a nearest-neighbor rescale
+      // of the mask to (W,H) is distortion-free; the 6px dilation that follows
+      // absorbs any single-pixel rounding at the silhouette edge.
+      if(priorAlpha && (priorAlpha.width!==W || priorAlpha.height!==H)){
+        const pw=priorAlpha.width, ph=priorAlpha.height;
+        const scaled=new Uint8Array(W*H);
+        for(let y=0;y<H;y++){
+          const sy=Math.min(ph-1,Math.round(y*ph/H));
+          const srow=sy*pw, drow=y*W;
+          for(let x=0;x<W;x++){
+            const sx=Math.min(pw-1,Math.round(x*pw/W));
+            scaled[drow+x]=priorAlpha.data[srow+sx];
+          }
+        }
+        priorAlpha={width:W,height:H,data:scaled};
+      }
+      if(priorAlpha && priorAlpha.width===W && priorAlpha.height===H){
+        const DIL=6;
+        // Separable horizontal max-dilation of the prior opaque mask
+        const horiz=new Uint8Array(W*H);
+        for(let y=0;y<H;y++){
+          const row=y*W;
+          for(let x=0;x<W;x++){
+            const x0=Math.max(0,x-DIL), x1=Math.min(W-1,x+DIL);
+            let on=0;
+            for(let xx=x0;xx<=x1;xx++){ if(priorAlpha.data[row+xx]>128){on=1; break;} }
+            horiz[row+x]=on;
+          }
+        }
+        // Then vertical max-dilation
+        const dilated=new Uint8Array(W*H);
+        for(let x=0;x<W;x++){
+          for(let y=0;y<H;y++){
+            const y0=Math.max(0,y-DIL), y1=Math.min(H-1,y+DIL);
+            let on=0;
+            for(let yy=y0;yy<=y1;yy++){ if(horiz[yy*W+x]){on=1; break;} }
+            dilated[y*W+x]=on;
+          }
+        }
+        // Apply ceiling — pixels outside the dilated prior silhouette → 0
+        for(let i=0;i<W*H;i++){ if(!dilated[i]) alpha[i]=0; }
+      }
+
+      // ── v5.20 Step 6b: Edge-band chroma suppression ─────────────────
+      // v2.0.6 — skipped in sketchSafe mode (see removeBg header).
+      if(!opts.sketchSafe){
+      // Halos surviving the BFS classifier are colorless by construction
+      // (anti-aliased non-garment-color, not garment color). Walk the band
+      // of opaque pixels within 3px of a transparent region; fade any that
+      // are both near-white AND chroma-less. Skip entirely when the garment
+      // itself is predominantly white (would eat its edges).
+      const CHROMA_THR=12, LUMA_THR=232, BAND_PX=3;
+
+      // First: detect if the garment is "white-ish" — if so, abort the pass.
+      // Sample every Nth opaque pixel to keep this O(W*H/sampleStride).
+      // v1.6.10 — count a pale-neutral pixel as white-GARMENT evidence only if
+      // it is also TEXTURED. A real white sweater is knit (high-frequency
+      // stitch texture); a smooth pale backdrop / shadow ghost is feature-less.
+      // Without this, a big smooth pale cloud inflated whiteRatio past 0.35 and
+      // made 6d (and 6b) skip entirely — leaving the cloud the user reported.
+      let whiteCount=0, opaqueCount=0;
+      const sampleStride=4;
+      const lumaIdx=(j)=>{const pj=j*4;return (d[pj]+d[pj+1]+d[pj+2])/3;};
+      for(let i=0;i<W*H;i+=sampleStride){
+        if(alpha[i]>=0.5){
+          opaqueCount++;
+          const pi=i*4;
+          const r=d[pi], g=d[pi+1], b=d[pi+2];
+          const luma=(r+g+b)/3;
+          const chroma=Math.max(r,g,b)-Math.min(r,g,b);
+          if(chroma<CHROMA_THR && luma>LUMA_THR){
+            const x=i%W, y=(i/W)|0;
+            let tex=0;
+            if(x<W-1) tex+=Math.abs(luma-lumaIdx(i+1));
+            if(y<H-1) tex+=Math.abs(luma-lumaIdx(i+W));
+            if(tex > 2) whiteCount++;   // textured pale-neutral ⇒ likely white knit
+          }
+        }
+      }
+      const whiteRatio = opaqueCount>0 ? whiteCount/opaqueCount : 0;
+      // v2.0.7 — always log. The ≥0.35 skip used to silence 6b AND 6d with no
+      // trace; a striped white-knit garment (57MS328SF yellow/white) tripped it
+      // and pale bg clouds survived with nothing in the console to show why.
+      console.log('[removeBg] whiteRatio='+whiteRatio.toFixed(3)+
+        (whiteRatio>=0.35?(opts.aggressive?' (≥0.35 but aggressive ⇒ 6b forced)':' (≥0.35 ⇒ white garment; 6b edge-band skip)'):' ⇒ 6b active'));
+
+      if(whiteRatio < 0.35 || opts.aggressive){
+        // Build transparent mask
+        const trans=new Uint8Array(W*H);
+        for(let i=0;i<W*H;i++){ if(alpha[i]<0.1) trans[i]=1; }
+        // Separable horizontal dilation of transparent mask
+        const transH=new Uint8Array(W*H);
+        for(let y=0;y<H;y++){
+          const row=y*W;
+          for(let x=0;x<W;x++){
+            const x0=Math.max(0,x-BAND_PX), x1=Math.min(W-1,x+BAND_PX);
+            let on=0;
+            for(let xx=x0;xx<=x1;xx++){ if(trans[row+xx]){on=1; break;} }
+            transH[row+x]=on;
+          }
+        }
+        // Vertical dilation
+        const transBand=new Uint8Array(W*H);
+        for(let x=0;x<W;x++){
+          for(let y=0;y<H;y++){
+            const y0=Math.max(0,y-BAND_PX), y1=Math.min(H-1,y+BAND_PX);
+            let on=0;
+            for(let yy=y0;yy<=y1;yy++){ if(transH[yy*W+x]){on=1; break;} }
+            transBand[y*W+x]=on;
+          }
+        }
+        // Fade opaque pixels in the band that match the halo signature
+        for(let i=0;i<W*H;i++){
+          if(alpha[i]<0.1 || !transBand[i]) continue;
+          const pi=i*4;
+          const r=d[pi], g=d[pi+1], b=d[pi+2];
+          const luma=(r+g+b)/3;
+          const chroma=Math.max(r,g,b)-Math.min(r,g,b);
+          if(chroma<CHROMA_THR && luma>LUMA_THR) alpha[i]=0;
         }
       }
 
+      // ── v1.6.8 Step 6d: Soft achromatic halo peel ───────────────────
+      // Gemini intermittently renders the garment on a soft grey vignette /
+      // glow instead of a flat #FFFFFF backdrop — near-constant on Side/Back
+      // (those are reconstructed from worn photos that carry a grey studio
+      // gradient), occasional on Front. The flat outer frame strips cleanly,
+      // but the smooth grey ramp hugging the silhouette survives every prior
+      // pass: Step 5's flood-fill + safe-zone BFS PROTECT it (its mid-grey
+      // core anchors), and 6b only fades near-white (luma>232) fringe. That
+      // surviving cloud is the "background not transparent" the user sees —
+      // identical in cause on every view; Side/Back just hit it far more.
+      //
+      // Prompts can't fix this — the render bgRule already mandates flat
+      // #FFFFFF and bans gradients/vignettes, and Gemini ignores it part of
+      // the time (same lesson as the reverted chroma-key approach). So peel
+      // it in code, same register as 6c: region-grow inward from the
+      // transparent frontier, removing pixels that look like halo and halting
+      // at the garment. A halo pixel is PALE (luma≥floor), NEUTRAL (low
+      // chroma — so a beige / coloured panel is never touched), SMOOTH vs the
+      // neighbour we arrived from (a luma STEP = garment edge ⇒ halt), and in
+      // a low-variance local neighbourhood. The 3×3 VARIANCE gate is the real
+      // garment protector and the reason the depth-map approach was dropped
+      // (a thick halo reads as "deep" too): a knit garment's surface and its
+      // true silhouette edge are textured / high-contrast (the edge is
+      // garment-vs-already-removed-bg in d[], which still holds the original
+      // RGB), so the grow stalls there; the painted halo gradient is
+      // feature-less and gets consumed. Guards, in order of reliance:
+      //   • white-garment carve-out (reuses 6b's whiteRatio) — skip entirely
+      //   • chroma gate (8)   — protects warm beige / any coloured panel
+      //   • variance gate (60)— halts at knit texture and the garment edge
+      //   • smoothness gate(7)— halts at a clean luma step into the garment
+      //   • luma floor (204)  — never touches mid/dark garment tones
+      //   • 60% runaway net   — if a perfectly flat pale-grey garment is
+      //     locally indistinguishable from the halo and the grow consumes
+      //     most of the opaque content, ABORT and keep everything (safe-fail
+      //     bias: preserve the garment, leave the halo for a manual retry).
+      // No-op on clean renders: garment-edge frontier pixels are high-variance
+      // (garment vs removed bg) so nothing seeds.
+      // v2.0.7 — whiteRatio gate REMOVED from 6d (it still gates 6b, whose
+      // near-white band fade has no texture check and genuinely would eat a
+      // white garment's edges). whiteRatio counts TEXTURED pale-neutral pixels
+      // (v1.6.10), so a white-KNIT-striped garment (57MS328SF) pushed it ≥0.35
+      // and silently disabled the halo peel — leaving the pale clouds the pass
+      // exists to remove. 6d does not need the carve-out: white knit is
+      // textured, so the SMOOTH_VAR gate halts the peel at the stripes; a
+      // smooth white garment is caught by the v1.7.2 smooth-garment guard
+      // (interior variance median), and the 60% runaway net remains the
+      // backstop. Verify against 78MT400 (smooth-jersey regression case)
+      // before promoting.
+      {
+        let opCount6d=0;
+        for(let i=0;i<W*H;i++){ if(alpha[i]>=0.5) opCount6d++; }
+        if(opCount6d>0){
+          // v1.6.9 — floor lowered 204 → 180 so the grow also climbs a
+          // mid-grey CAST SHADOW (luma ~150–200), not just a pale vignette.
+          // Live test on 77S127SF: 6d was peeling the pale outer cloud
+          // (147k / 95k px on side / back) but leaving the darker shadow core,
+          // which sat below the old 204 floor. With 180 the garment is no
+          // longer protected by luminance alone (the grey body overlaps the
+          // shadow range) — the VARIANCE gate becomes the primary protector:
+          // a cast shadow is smooth/feature-less, the knit garment surface and
+          // its silhouette edge are textured, so the grow stalls at the knit.
+          // PROVISIONAL: worst case is a flat-lit grey panel that reads like a
+          // smooth shadow; the runaway net + chroma gate are the backstops,
+          // but a real failing PNG is still wanted to place this precisely.
+          const HALO_MIN_LUMA = 180;  // pale + mid-grey shadow; garment protected by variance
+          // v1.6.12 — raised 8 → 12 from a REAL exported PNG (77S127 side). The
+          // connected partial-alpha haze measured chroma p50=8, p90=10, p95=11 —
+          // it sat right on the old 8 cutoff and was rejected as "coloured", so the
+          // peel stalled. The grey knit body is just as smooth/low-chroma as the
+          // haze, so chroma can't be the body's protector here — the SMOOTH_DELTA
+          // luma step at the silhouette (haze ~235 vs grey body ~210 = a ~25 step,
+          // far over the 7 ceiling) halts the grow at the garment, and the runaway
+          // abort is the backstop if it ever over-reaches.
+          const HALO_CHROMA   = 12;   // neutral/faint-tint halo; beige panels (chroma 20+) protected (was 8)
+          const SMOOTH_DELTA  = 7;    // per-step ramp continuity — halts at a clean edge step
+          const SMOOTH_VAR    = 60;   // 3×3 luma-variance ceiling — halts at texture / edges
+          const RUNAWAY_FRAC  = 0.6;  // gross-runaway sanity net (flat grey garment ≈ shadow)
+          const lumaOf  =(i)=>{const pi=i*4;return (d[pi]+d[pi+1]+d[pi+2])/3;};
+          const chromaOf=(i)=>{const pi=i*4;return Math.max(d[pi],d[pi+1],d[pi+2])-Math.min(d[pi],d[pi+1],d[pi+2]);};
+          function localVar(i){
+            const x=i%W, y=(i/W)|0; let s=0,s2=0,n=0;
+            for(let dy=-1;dy<=1;dy++){ const ny=y+dy; if(ny<0||ny>=H) continue;
+              for(let dx=-1;dx<=1;dx++){ const nx=x+dx; if(nx<0||nx>=W) continue;
+                const lu=lumaOf(ny*W+nx); s+=lu; s2+=lu*lu; n++; } }
+            return n>0 ? (s2/n - (s/n)*(s/n)) : 0;
+          }
+          const removed=new Uint8Array(W*H);
+          const pstack=new Int32Array(W*H);
+          let psp=0, removedCount=0;
+          function tryPeel(i, fromLuma){
+            if(removed[i] || alpha[i] < 0.1) return;      // already gone / already transparent
+            const lu=lumaOf(i);
+            if(lu < HALO_MIN_LUMA) return;                // too dark to be the pale halo
+            if(chromaOf(i) >= HALO_CHROMA) return;         // has colour ⇒ garment, not halo
+            if(fromLuma>=0 && Math.abs(lu-fromLuma) > SMOOTH_DELTA) return; // edge step ⇒ garment
+            if(localVar(i) > SMOOTH_VAR) return;          // textured / edge ⇒ garment
+            removed[i]=1; removedCount++; pstack[psp++]=i;
+          }
+          // ── v1.7.2 smooth-garment guard ─────────────────────────────
+          // 6d's ONLY real garment protector is the SMOOTH_VAR variance gate,
+          // which assumes the garment surface is textured (knit) while the
+          // halo is feature-less. On a smooth jersey garment (e.g. a flat tee)
+          // the surface is as smooth / pale / low-chroma as the halo, so the
+          // inward grow walks off the halo straight into the garment and carves
+          // a wedge out of it (regression first seen on 78MT400 front — could
+          // not happen pre-6d, i.e. V1.6.3). Measure the garment's own interior
+          // texture: if its median 3×3 luma-variance is below SMOOTH_VAR, then
+          // by 6d's own definition most of the garment reads as "peelable" and
+          // the gate is void — so SKIP the peel and leave any halo for a manual
+          // retry. Documented safe-fail bias: never damage the garment. Median
+          // is logged so the cutoff can be tuned against real exports.
+          let smoothGarment=false;
+          {
+            const samples=[];
+            const STRIDE=Math.max(1,(Math.sqrt(W*H)/200)|0);
+            for(let i=0;i<W*H;i+=STRIDE){
+              if(alpha[i] < 0.5) continue;
+              const x=i%W, y=(i/W)|0;
+              if(x<=0||x>=W-1||y<=0||y>=H-1) continue;
+              // interior only — the silhouette edge is legitimately high-variance
+              // (garment vs removed bg) and would mask a smooth surface
+              if(alpha[i-1]<0.5||alpha[i+1]<0.5||alpha[i-W]<0.5||alpha[i+W]<0.5) continue;
+              samples.push(localVar(i));
+            }
+            if(samples.length >= 200){
+              samples.sort((a,b)=>a-b);
+              const median=samples[samples.length>>1];
+              // v2.0.8 — aggressive (manual Scrub BG) overrides this whole-pass
+              // skip; the per-pixel gates + runaway abort stay as protection.
+              smoothGarment = !opts.aggressive && median < SMOOTH_VAR;
+              console.log('[removeBg 6d] interior variance median='+median.toFixed(1)+
+                (smoothGarment
+                  ? ' (<'+SMOOTH_VAR+') ⇒ smooth garment; skipping 6d peel to protect it'
+                  : (opts.aggressive && median < SMOOTH_VAR
+                      ? ' (<'+SMOOTH_VAR+' but aggressive ⇒ 6d forced)'
+                      : ' ⇒ textured; 6d active')));
+            }
+          }
+          if(!smoothGarment){
+          // Seed ring: halo-qualifying opaque pixels that touch transparency.
+          for(let i=0;i<W*H;i++){
+            if(alpha[i] < 0.1) continue;
+            const x=i%W, y=(i/W)|0;
+            const transAdj =
+              (x>0   && alpha[i-1] < 0.1) || (x<W-1 && alpha[i+1] < 0.1) ||
+              (y>0   && alpha[i-W] < 0.1) || (y<H-1 && alpha[i+W] < 0.1);
+            if(transAdj) tryPeel(i, -1);
+          }
+          // Grow inward along the smooth, feature-less ramp.
+          while(psp>0){
+            const i=pstack[--psp]; const lu=lumaOf(i);
+            const x=i%W, y=(i/W)|0;
+            if(x>0)   tryPeel(i-1, lu);
+            if(x<W-1) tryPeel(i+1, lu);
+            if(y>0)   tryPeel(i-W, lu);
+            if(y<H-1) tryPeel(i+W, lu);
+          }
+          if(removedCount > 0 && removedCount <= opCount6d*RUNAWAY_FRAC){
+            for(let i=0;i<W*H;i++){ if(removed[i]) alpha[i]=0; }
+            console.log('[removeBg 6d] peeled '+removedCount+'px soft achromatic halo');
+          } else if(removedCount > 0){
+            console.warn('[removeBg 6d] aborted — peel would remove '+removedCount+'px ('+
+              (100*removedCount/opCount6d).toFixed(0)+'% of opaque); kept to protect garment');
+          }
+          } // end if(!smoothGarment)
+        }
+      }
+      } // end if(!opts.sketchSafe) — gates 6b + 6d (both target pale
+        // achromatic regions, which IS a flat sketch's interior fill)
+
+      // ── v1.6.3 Step 6c: Detached-island removal (connected-component) ──
+      // A ghost-mannequin render is, by definition, a SINGLE connected
+      // garment silhouette. Any opaque island NOT connected to the main
+      // blob is an artifact — a stray shadow/smudge/reflection fragment the
+      // model dropped into a corner (observed: a light-gray blob in the
+      // top-left of striped renders). Steps 5/6a/6b can't catch it: it is
+      // detached from the bg flood-fill frontier, the safe-zone BFS protects
+      // its opaque core as an "anchor", and its core survives 6b chroma
+      // suppression (opaque, not near-white). Fix: label all opaque
+      // components (8-connectivity), keep the largest plus any that are a
+      // meaningful fraction of it, and zero everything else — which also
+      // sweeps the sub-OP haze fringing a removed island.
+      // v2.0.6 — skipped in sketchSafe mode: a flat sketch legitimately
+      // contains detached opaque marks (button circles, dashed topstitch
+      // segments, size-label boxes) that must survive.
+      if(!opts.sketchSafe){
+        const ISLAND_KEEP_FRAC = 0.03;  // keep secondary parts >=3% of main blob
+        const OP = 0.02;                // opaque cutoff for connectivity (~5/255);
+                                        // low enough to keep the garment's feather
+                                        // in one component, so feather is preserved.
+        const label = new Int32Array(W*H);   // 0 = unlabeled
+        const stack = new Int32Array(W*H);
+        const sizes = [0];                    // sizes[0] unused
+        let nextLabel = 0;
+        for(let s=0;s<W*H;s++){
+          if(label[s] || alpha[s] < OP) continue;
+          nextLabel++;
+          let count=0, sp=0;
+          stack[sp++]=s; label[s]=nextLabel;
+          while(sp>0){
+            const idx=stack[--sp];
+            count++;
+            const x=idx%W, y=(idx/W)|0;
+            for(let dy=-1;dy<=1;dy++){
+              const ny=y+dy; if(ny<0||ny>=H) continue;
+              for(let dx=-1;dx<=1;dx++){
+                if(dx===0&&dy===0) continue;
+                const nx=x+dx; if(nx<0||nx>=W) continue;
+                const ni=ny*W+nx;
+                if(label[ni] || alpha[ni] < OP) continue;
+                label[ni]=nextLabel;
+                stack[sp++]=ni;
+              }
+            }
+          }
+          sizes.push(count);
+        }
+        // Only act when there is a real garment AND >=2 components.
+        if(nextLabel>1){
+          let maxLabel=1, maxSize=sizes[1];
+          for(let l=2;l<=nextLabel;l++){ if(sizes[l]>maxSize){ maxSize=sizes[l]; maxLabel=l; } }
+          // Guard: if the biggest "garment" is itself tiny (<1% of frame),
+          // removeBg likely failed upstream — bail rather than risk erasing
+          // a real (if degenerate) render.
+          if(maxSize >= W*H*0.01){
+            // v1.6.10 — per-component signature so a DETACHED smooth/achromatic
+            // island (a floating backdrop or shadow ghost — observed as the pale
+            // arch beside the side/back renders) is dropped at ANY size, while a
+            // textured OR coloured detached island (a legit second garment part)
+            // still follows the ≥3% size rule. Texture = mean abs luma diff to
+            // the right/down same-label neighbour (knit = high, smooth cloud ≈ 0);
+            // measured intra-component so the island's border against transparency
+            // doesn't inflate it.
+            // v1.6.12 — tuned from a REAL exported PNG (77S127 back). The
+            // detached floating cloud measured meanChroma=10.06 (it missed the
+            // old <10 gate by 0.06) and meanEdge=0.269; the garment knit measured
+            // meanEdge=1.977 and beige panels meanChroma~20+. So: widen the chroma
+            // ceiling to 16 (catches the faintly-tinted backdrop ghost, still well
+            // under beige), and TIGHTEN the edge gate to 1.0 — the real separator
+            // is texture (cloud 0.27 vs knit 1.98), so the smoothness test now
+            // carries the protection and a low-chroma knit fragment (edge ~2)
+            // is NOT dropped as a ghost (falls to the ≥3% size rule instead).
+            const ISLAND_CHROMA = 16;   // mean chroma below ⇒ neutral/grey (was 10)
+            const ISLAND_EDGE   = 1.0;  // mean intra-island edge below ⇒ smooth (was 3.0; knit≈2)
+            const cCount=new Float64Array(nextLabel+1);
+            const cChroma=new Float64Array(nextLabel+1);
+            const cEdge=new Float64Array(nextLabel+1);
+            const cEdgeN=new Float64Array(nextLabel+1);
+            const lumaAt=(j)=>{const pj=j*4;return (d[pj]+d[pj+1]+d[pj+2])/3;};
+            for(let i=0;i<W*H;i++){
+              const L=label[i]; if(!L) continue;
+              const pi=i*4;
+              cChroma[L]+=Math.max(d[pi],d[pi+1],d[pi+2])-Math.min(d[pi],d[pi+1],d[pi+2]);
+              cCount[L]++;
+              const x=i%W, y=(i/W)|0; const lu=lumaAt(i);
+              if(x<W-1 && label[i+1]===L){ cEdge[L]+=Math.abs(lu-lumaAt(i+1)); cEdgeN[L]++; }
+              if(y<H-1 && label[i+W]===L){ cEdge[L]+=Math.abs(lu-lumaAt(i+W)); cEdgeN[L]++; }
+            }
+            const keepThresh = maxSize * ISLAND_KEEP_FRAC;
+            const keep = new Uint8Array(nextLabel+1);
+            let kept=0, droppedGhost=0;
+            for(let l=1;l<=nextLabel;l++){
+              if(l===maxLabel){ keep[l]=1; kept++; continue; }   // garment — always keep
+              const meanChroma = cCount[l]>0 ? cChroma[l]/cCount[l] : 0;
+              const meanEdge   = cEdgeN[l]>0 ? cEdge[l]/cEdgeN[l] : 0;
+              const smoothGhost = meanChroma < ISLAND_CHROMA && meanEdge < ISLAND_EDGE;
+              if(smoothGhost){ droppedGhost++; continue; }       // backdrop/shadow ghost — drop any size
+              if(sizes[l] >= keepThresh){ keep[l]=1; kept++; }   // textured/coloured part — size rule
+            }
+            if(kept < nextLabel){
+              let removed=0;
+              for(let i=0;i<W*H;i++){
+                if(alpha[i] > 0 && !keep[label[i]]){ alpha[i]=0; removed++; }
+              }
+              if(removed) console.log('[removeBg 6c] removed '+removed+'px across '+(nextLabel-kept)+' detached island(s)'+(droppedGhost?' ('+droppedGhost+' smooth/achromatic ghost)':''));
+            }
+          }
+        }
+      }
+
+      for(let i=0;i<W*H;i++) d[i*4+3]=Math.round(alpha[i]*255);
+
       ctx.putImageData(id,0,0);
-      cv.toBlob(blob=>resolve(blob),'image/png');
+      res(c.toDataURL('image/png'));
     };
-    img.onerror=()=>resolve(null);
-    img.src=`data:${mimeType};base64,${base64}`;
+    img.onerror=()=>res(b64);
+    img.src=b64;
   });
 }
 
@@ -2547,6 +3028,7 @@ const ARCHIVE_QA_MAX_ATTEMPTS = 3;
 // 6d, so white knits no longer disable the peel) and get a conservative
 // 2px rim-only peel so the garment itself is never eaten (edge-reachable
 // principle, §4.1).
+// v1.24 — SUPERSEDED by removeBgCore's built-in 6d (web-parity port). No active call sites.
 function achromaticPeel(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -2668,6 +3150,7 @@ function achromaticPeel(blob) {
 //   • sub-opacity haze around removed islands is swept
 // Replaces the v1.8 size-only despeckle (which could eat a legitimate
 // colored second part and keep a large white artifact).
+// v1.24 — SUPERSEDED by removeBgCore's built-in 6c (web-parity port). No active call sites.
 function despeckleAlpha(blob) {
   return new Promise(resolve => {
     if (!blob) { resolve(blob); return; }
@@ -3490,12 +3973,10 @@ async function renderRow(row) {
       row._stepLabel = 'Removing background…'; renderTable();
       aBlob = await removeBg(aB64, aMime);
 
-      // v1.17 — 2nd pass: §4.1 6d achromatic peel removes all leftover white
-      row._stepLabel = 'White peel (6d)…'; renderTable();
-      aBlob = await achromaticPeel(aBlob) || aBlob;
-
-      row._stepLabel = 'Detached-island removal (6c)…'; renderTable();
-      let cleaned = await despeckleAlpha(aBlob);
+      // v1.24 — 6b/6c/6d now run INSIDE removeBg (web-app v2.1.1 chain,
+      // verbatim port); the separate v1.17 peel + v1.19 despeckle passes are
+      // superseded and no longer called here.
+      let cleaned = aBlob;
       // v1.11 — erase dark/gray shaded background blobs that touch the frame
       // edge (removeBg keys to white and leaves dark corners behind).
       cleaned = await trimBorderArtifacts(cleaned || aBlob);
@@ -3594,9 +4075,8 @@ async function renderRow(row) {
       const { base64: b64, mimeType: bMime } = await callGemini(basePrompt, rawBase64, rawMime, { mannequin, garmentType });
       lastRawB64 = b64;
       const baseRaw0 = await removeBg(b64, bMime);
-      // v1.17 — 2nd pass: §4.1 6d achromatic peel BEFORE silhouette extraction so
-      // leftover white (residual torso panels) never enters the alpha ceiling.
-      const baseRaw = await achromaticPeel(baseRaw0) || baseRaw0;
+      // v1.24 — 6d now runs inside removeBg (web-parity chain); separate peel superseded.
+      const baseRaw = baseRaw0;
       // v1.11 — strip any dark/shaded border blob before deriving the silhouette.
       const cand = await trimBorderArtifacts(baseRaw) || baseRaw;
       const form = await detectResidualForm(cand);
@@ -3646,10 +4126,8 @@ async function renderRow(row) {
     row._stepLabel = 'Removing background…'; renderTable();
     const rawBlob0 = await removeBg(base64, mimeType);
 
-    // v1.17 — 2nd pass: §4.1 6d achromatic peel removes leftover white before the
-    // ceiling and BEFORE the LAB lock (white fringe would contaminate the mean).
-    row._stepLabel = 'White peel (6d)…'; renderTable();
-    const rawBlob = await achromaticPeel(rawBlob0) || rawBlob0;
+    // v1.24 — 6d now runs inside removeBg (web-parity chain); separate peel superseded.
+    const rawBlob = rawBlob0;
 
     // Apply prior-alpha ceiling — no halos outside the Pass 1 silhouette
     row._stepLabel = 'Applying silhouette ceiling…'; renderTable();
