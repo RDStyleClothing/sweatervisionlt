@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light v1.25</title>
+<title>SweaterVision Light v1.29</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -864,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.25</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.29</span>
 
     <div class="header-spacer"></div>
 
@@ -1446,7 +1446,7 @@ function buildColorContext(hex) {
 // Pinned stable strings only — never "-latest" / "-preview" aliases.
 const RENDER_MODEL          = 'gemini-3.1-flash-image';  // Interactions API migration shipped v1.21 (generateContent shut down 2026-10-02)
 const RENDER_IMAGE_SIZE     = '1K';                      // 896×1200 @ 3:4; '2K' pending D6 benchmark
-const GEMINI_THINKING_LEVEL = 'none';                    // v1.23: gemini-3.1-flash-image does NOT support thinking at all (400 "Thinking is not enabled for this model") — 'none' omits generation_config entirely. Knob kept for future models. Spec §2 'minimal' pin wrong twice vs live API; spec owner notified
+const GEMINI_THINKING_LEVEL = 'minimal';                 // v1.28: §2 pin RESTORED with graceful fallback. The web app sends this successfully while Light's key 400'd ("Thinking is not enabled for this model") — thinking enablement appears to be per-key/per-project. Thinking materially improves rule adherence (flat bg, no blowouts); callGemini now tries WITH it and falls back without on that specific 400, remembering per session
 const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no date suffix exists)
 // Gemini model may still be overridden in Settings (⚙, localStorage svs_gemini_model);
 // RENDER_MODEL is the pinned default when no override is set.
@@ -1456,7 +1456,7 @@ const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no da
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.25';   // v1.25 — INPUT-KIND PROMPT ROUTING (2026-08-13): per-image Claude classify now also returns input worn|flat|sketch; flat/sketch rows use the lean web-parity Render-As-Is request (buildRenderAsIsPrompt) instead of the ~400-word worn/flat/sketch triage prompt, whose rule mass diluted lighting/shading on clean inputs (v1.8.0/v2.0.6 failure class) and produced flat whites the extractor could not separate. Worn photos keep the extraction prompt; retries reuse the routed base; classify-fail defaults to worn (safe superset). v1.24 — WEB-PARITY PORT (2026-08-13): render-quality gap vs SweaterVision v2.1.1 closed by porting the canonical file's removeBg chain VERBATIM (renamed removeBgCore; thin base64/Blob adapter). Brings 6a prior-alpha ceiling, 6b edge-band chroma suppression (CHROMA_THR 12, v5.21 band; whiteRatio gates 6b only, V2.0.7), 6c chroma-aware island removal, 6d SMOOTH_VAR-guarded always-on halo peel. Superseded achromaticPeel/despeckleAlpha calls removed (functions retained, marked). Prompt layer synced to web v5.23/v6.1: identity block completed (collar/pockets/sleeve bullets + do-not-normalize close), styleRule reconstruction-lock sentence, rule 7 title, FAILURE EXAMPLES wording, 7b alignment. trimBorderArtifacts + applyAlphaCeiling retained (cover cases the web chain does not). v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const SVL_VERSION = 'v1.29';   // v1.29 — ROOT CAUSE FOUND + STALE-OVERRIDE MIGRATION (2026-08-13): Light's Settings carried a pre-migration localStorage model override (gemini-2.5-flash-image) that silently won over the §2 RENDER_MODEL pin — Light rendered on Gemini 2.5 all along while the web app rendered on 3.1. Explains the entire cross-app quality gap, the thinking 400s (true for 2.5), and the low/high error vocabulary. callGemini now clears any generateContent-era override once, loudly, and uses the pin. v1.28 — THINKING RESTORED WITH FALLBACK (2026-08-13): the web app successfully sends thinking_level minimal while Light's key 400'd on it — thinking enablement appears per-key/per-project, and thinking plausibly explains the systematic render-adherence gap (shadowed backgrounds, blown whites). callGemini now tries WITH generation_config per the §2 pin and falls back without it on the specific thinking 400, sticky per session. Operator action: use the same Gemini key as the web app if they differ. v1.27 — WHITE RESCUE (2026-08-13): deterministic fix for blown-out near-white garments being flood-eaten to fragments. (1) opts.thrScale hook in removeBgCore (sole marked deviation from the verbatim web core); (2) adaptive removeBg adapter — when post-extraction coverage < 6% (fragment signature), re-run extraction at thrScale 0.5 and keep the higher-coverage pass; (3) anti-blowout clause appended to every QA retry prompt (visible fold shading on pale garments; no garment pixel at pure 255 white). v1.26 — routing fix (2026-08-13): As-Is prompt is FLAT-only. v1.25 also routed sketches to it, whose as-photographed language preserved the sketch look (regression vs v1.24, where the same CAD flat rendered correctly under the extraction prompt's sketch-conversion paragraph). sketch + worn → extraction prompt; flat → lean As-Is. v1.25 — INPUT-KIND PROMPT ROUTING (2026-08-13): per-image Claude classify now also returns input worn|flat|sketch; flat/sketch rows use the lean web-parity Render-As-Is request (buildRenderAsIsPrompt) instead of the ~400-word worn/flat/sketch triage prompt, whose rule mass diluted lighting/shading on clean inputs (v1.8.0/v2.0.6 failure class) and produced flat whites the extractor could not separate. Worn photos keep the extraction prompt; retries reuse the routed base; classify-fail defaults to worn (safe superset). v1.24 — WEB-PARITY PORT (2026-08-13): render-quality gap vs SweaterVision v2.1.1 closed by porting the canonical file's removeBg chain VERBATIM (renamed removeBgCore; thin base64/Blob adapter). Brings 6a prior-alpha ceiling, 6b edge-band chroma suppression (CHROMA_THR 12, v5.21 band; whiteRatio gates 6b only, V2.0.7), 6c chroma-aware island removal, 6d SMOOTH_VAR-guarded always-on halo peel. Superseded achromaticPeel/despeckleAlpha calls removed (functions retained, marked). Prompt layer synced to web v5.23/v6.1: identity block completed (collar/pockets/sleeve bullets + do-not-normalize close), styleRule reconstruction-lock sentence, rule 7 title, FAILURE EXAMPLES wording, 7b alignment. trimBorderArtifacts + applyAlphaCeiling retained (cover cases the web chain does not). v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
 const RULES_VERSION = '1.1';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
@@ -1714,7 +1714,19 @@ Base instruction to enhance: Perform a professional 3D ghost mannequin e-commerc
 // ── Gemini → generated image (v5.4 prompt rules, exact copy) ─────
 async function callGemini(prompt, rawBase64, rawMime, options = {}) {
   const key         = localStorage.getItem('svs_gemini_key')   || '';
-  const model       = localStorage.getItem('svs_gemini_model') || RENDER_MODEL;   // §2 pinned default
+  // v1.29 — stale-override migration: a pre-migration localStorage model
+  // (generateContent-era gemini-2.5-*) silently defeated the §2 pin and had
+  // Light rendering on Gemini 2.5 while the web app rendered on 3.1 — the
+  // root cause of the entire cross-app quality gap AND the thinking 400s
+  // ("Thinking is not enabled for this model" was true — for 2.5). Any
+  // shut-down-generation override is now cleared once, loudly.
+  let _storedModel = localStorage.getItem('svs_gemini_model') || '';
+  if (/^gemini-2\.5/.test(_storedModel)) {
+    console.warn(`[SVL] Stale model override "${_storedModel}" (generateContent era, shut down 2026-10-02) cleared — using pinned ${RENDER_MODEL}. This override was the root cause of degraded renders and thinking 400s.`);
+    localStorage.removeItem('svs_gemini_model');
+    _storedModel = '';
+  }
+  const model       = _storedModel || RENDER_MODEL;   // §2 pinned default
   const mannequin   = (options.mannequin    || localStorage.getItem('svs_mannequin') || 'unisex').toLowerCase();
   const garmentType = (options.garmentType  || localStorage.getItem('svs_garment')   || 'top').toLowerCase();
   const isBottom    = garmentType === 'bottom';
@@ -1832,7 +1844,14 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
   // 'image/png' is a 4xx). JPEG raw output is acceptable: alpha is created in code
   // (§5 Step 3) and Step 6b edge-band chroma suppression absorbs JPEG edge noise.
   // All DELIVERED files remain PNG via re-encode downstream.
-  const body = JSON.stringify({
+  // v1.28 — thinking-with-fallback (same pattern as the proven v5.x
+  // responseModalities dance): try WITH generation_config.thinking_level per
+  // the §2 pin; if THIS key's project has thinking disabled for the model
+  // (400 "Thinking is not enabled"), retry once without it and remember for
+  // the session so every later call skips straight to the working shape.
+  // Thinking measurably improves rule adherence (flat #FFFFFF background, no
+  // blown whites) — keys that support it should always use it.
+  const buildBody = (withThinking) => JSON.stringify({
     model,
     input: parts,
     response_format: {
@@ -1841,16 +1860,28 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
       aspect_ratio: '3:4',
       image_size: RENDER_IMAGE_SIZE
     },
-    // v1.23 — thinking_level only sent when the pin enables it; gemini-3.1-flash-image rejects the field outright
-    ...(GEMINI_THINKING_LEVEL && GEMINI_THINKING_LEVEL !== 'none'
+    ...(withThinking && GEMINI_THINKING_LEVEL && GEMINI_THINKING_LEVEL !== 'none'
         ? { generation_config: { thinking_level: GEMINI_THINKING_LEVEL } } : {})
   });
 
-  const res = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
+  const doFetch = (withThinking) => fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },   // header auth — never ?key= (§2)
-    body
+    body: buildBody(withThinking)
   });
+
+  let useThinking = window._svlThinkingSupported !== false;   // sticky per session
+  let res = await doFetch(useThinking);
+  if (res.status === 400 && useThinking) {
+    const errText = await res.text().catch(() => '');
+    if (/thinking/i.test(errText)) {
+      console.warn('[callGemini] thinking not enabled on this key/model — falling back without generation_config (sticky for this session). Consider using the same Gemini key as the SweaterVision web app: thinking improves render rule adherence.');
+      window._svlThinkingSupported = false;
+      res = await doFetch(false);
+    } else {
+      throw new Error(`Gemini 400: ${errText} — check the model in Settings (⚙)`);
+    }
+  }
 
   if (res.status === 429) throw new Error('429: Rate limited — will retry');
   if (!res.ok) {
@@ -1888,9 +1919,23 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
 // (torn edges / ghosting artifacts). Verbatim body; only the name changed
 // to removeBgCore. The thin adapter below keeps the (base64, mime) → Blob
 // call-site contract unchanged.
-function removeBg(base64, mimeType) {
-  return removeBgCore(`data:${mimeType};base64,${base64}`, null, {})
-    .then(dataUrl => fetch(dataUrl).then(r => r.blob()).catch(() => null));
+async function removeBg(base64, mimeType) {
+  const src = `data:${mimeType};base64,${base64}`;
+  const toBlob = dataUrl => fetch(dataUrl).then(r => r.blob()).catch(() => null);
+  const pass1 = await toBlob(await removeBgCore(src, null, {}));
+  const cov1  = await renderCoverage(pass1);
+  // v1.27 — adaptive white rescue: a collapsed post-extraction coverage is the
+  // fragment signature of a blown-out near-white garment (pixels within the bg
+  // threshold get flood-eaten). Deterministic rescue: re-run the core with the
+  // threshold halved so pale garment pixels anchor as garment, and keep
+  // whichever pass preserved more garment. Colored garments are unaffected
+  // (their first pass never collapses).
+  if (cov1 >= 0.06) return pass1;
+  console.warn(`[removeBg] coverage collapsed (${(cov1*100).toFixed(1)}%) — white-rescue pass at thrScale 0.5`);
+  const pass2 = await toBlob(await removeBgCore(src, null, { thrScale: 0.5 }));
+  const cov2  = await renderCoverage(pass2);
+  console.log(`[removeBg] white-rescue coverage ${(cov2*100).toFixed(1)}% vs ${(cov1*100).toFixed(1)}%`);
+  return cov2 > cov1 ? pass2 : pass1;
 }
 
 async function removeBgCore(b64, priorAlpha=null, opts={}){
@@ -1968,7 +2013,11 @@ async function removeBgCore(b64, priorAlpha=null, opts={}){
       const bgBr=(bgR+bgG+bgB)/3;
 
       // ── Step 2: Threshold for "is this pixel bg-colored?" ────────────
-      const THR = bgBr > 200 ? 42 : bgBr > 128 ? 38 : 45;
+      // v1.27 — opts.thrScale: SOLE Light deviation from the verbatim web core.
+      // The adaptive white-rescue wrapper re-runs extraction at thrScale 0.5
+      // when the first pass collapses coverage (blown-out near-white garment
+      // pixels landing inside the bg threshold and being flood-eaten).
+      const THR = (bgBr > 200 ? 42 : bgBr > 128 ? 38 : 45) * (opts.thrScale || 1);
 
       function colorDistToBg(r,g,b){
         const dr=r-bgR, dg=g-bgG, db=b-bgB;
@@ -3459,6 +3508,12 @@ function buildArchiveRetryPrompt(row, mannequin, garmentType, qa, asIsBase) {
     corrective +=
       'The previous render shifted the garment color away from the original photograph. Reproduce the EXACT color, pattern, stripes, and trim from the original with 100% fidelity — do NOT lighten, whiten, gray out, or shift the hue. ';
   }
+  // v1.27 — anti-blowout clause: white/pale garments repeatedly came back
+  // blown out to near-pure-white, indistinguishable from the background and
+  // destroyed by extraction. Appended to every retry; harmless for colored
+  // garments.
+  corrective +=
+    'If the garment is white, cream, ivory, or any pale shade: render it with clearly visible fold shading, knit texture, and soft warm depth so every part of the fabric remains unmistakably distinct from the pure #FFFFFF background. Do NOT blow out highlights; no garment pixel may read as pure white (255,255,255). ';
   return corrective + base;
 }
 
@@ -3979,7 +4034,12 @@ async function renderRow(row) {
       // triage inside the mega-prompt diluted the lighting/shading rules on clean
       // inputs (the v1.8.0/v2.0.6 rule-mass failure class), producing flat
       // low-contrast whites that starved the (now byte-identical) extractor.
-      const asIsBase = (row._inputKind === 'flat' || row._inputKind === 'sketch');
+      // v1.26 — FLAT-ONLY routing. v1.25 also routed sketches to the As-Is
+      // prompt, whose "exactly as photographed" language preserves the sketch
+      // look — a regression (the same CAD flat rendered correctly in v1.24
+      // under the extraction prompt, whose sketch-conversion paragraph is what
+      // a CAD flat needs). Sketch and worn now both use the extraction prompt.
+      const asIsBase = (row._inputKind === 'flat');
       const archPrompt = userEditCorrective(row) + ((retrying && retryQa)
         ? buildArchiveRetryPrompt(row, aMannequin, aGarment, retryQa, asIsBase)
         : (asIsBase ? buildRenderAsIsPrompt(row, aMannequin, aGarment)
