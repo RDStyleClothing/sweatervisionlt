@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>SweaterVision Light v1.22</title>
+<title>SweaterVision Light v1.23</title>
 <link rel="preconnect" href="https://fonts.googleapis.com" />
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
@@ -864,7 +864,7 @@ html, body {
       <div class="logo-icon">SVL</div>
       <span class="logo-text">SweaterVision Light</span>
     </a>
-    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.22</span>
+    <span class="version-badge" id="versionBadge" title="Implements RENDER_RULES 1.1">v1.23</span>
 
     <div class="header-spacer"></div>
 
@@ -1446,7 +1446,7 @@ function buildColorContext(hex) {
 // Pinned stable strings only — never "-latest" / "-preview" aliases.
 const RENDER_MODEL          = 'gemini-3.1-flash-image';  // Interactions API migration shipped v1.21 (generateContent shut down 2026-10-02)
 const RENDER_IMAGE_SIZE     = '1K';                      // 896×1200 @ 3:4; '2K' pending D6 benchmark
-const GEMINI_THINKING_LEVEL = 'low';                     // pinned for determinism — v1.22: live API rejects 'minimal' (400: allowed values low/high); spec §2 deviation flagged
+const GEMINI_THINKING_LEVEL = 'none';                    // v1.23: gemini-3.1-flash-image does NOT support thinking at all (400 "Thinking is not enabled for this model") — 'none' omits generation_config entirely. Knob kept for future models. Spec §2 'minimal' pin wrong twice vs live API; spec owner notified
 const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no date suffix exists)
 // Gemini model may still be overridden in Settings (⚙, localStorage svs_gemini_model);
 // RENDER_MODEL is the pinned default when no override is set.
@@ -1456,7 +1456,7 @@ const CLAUDE_MODEL          = 'claude-sonnet-5';         // pinned stable (no da
    ════════════════════════════════════════════════════════════════
    Every constant here is a tuning knob the RENDER_RULES ruleset asks to
    be surfaced for live tuning rather than buried in a function body. */
-const SVL_VERSION = 'v1.22';   // v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
+const SVL_VERSION = 'v1.23';   // v1.23 — hotfix 2 (2026-08-13): thinking not supported AT ALL by gemini-3.1-flash-image (400 invalid_request) — GEMINI_THINKING_LEVEL='none' omits generation_config from the request; knob retained for future models. v1.22 — hotfix from first live Interactions run (2026-08-13): GEMINI_THINKING_LEVEL 'minimal' → 'low' — gemini-3.1-flash-image rejects 'minimal' with a 400 (allowed: low/high). Deviation from RENDER_RULES 1.1 §2 pin; spec owner notified. v1.21 — RENDER_RULES 1.1 API migration (2026-08-12): Gemini moved off generateContent (dead 2026-10-02) onto the Interactions API — POST /v1beta/interactions, x-goog-api-key header auth, typed input blocks, response_format image/jpeg + pinned 3:4/1K, thinking_level minimal, output_image + steps-walk parsing (thought steps never read); delivered files remain PNG via canvas re-encode. Claude moved to claude-sonnet-5: max_tokens 1024 on all four call sites (adaptive thinking bills against the budget), text blocks located by type (never content[0]), no sampling params. Four §2 model-pin constants hoisted; RULES_VERSION 1.1 declared. v1.20 — Folder-tree ingest (2026-08-12): Archive Mode scans the Originals folder RECURSIVELY, mirrors the subfolder structure into the Output folder, and (subfolders only) renders just style-number-prefixed garment shots — chip/reference images are skipped and reported (ingest_skipped in the run summary, never silent). Idempotency scan + REVIEW janitor are tree-aware. HEIC/HEIF accepted. Root-level flat folders keep exact v1.19 behavior. v1.19 — RENDER_RULES 1.0 alignment: RULES_VERSION declared (§0); Frame Lock §4.4; binding pipeline order §4; Step 6c chroma-aware island removal; §4.5 decision log. v1.18 — per-row garment type from raw filename keywords. v1.17 — achromatic white-peel 2nd pass; image inspector.
 const RULES_VERSION = '1.1';   // RENDER_RULES version this app implements (§0 — apps declare, they do not redefine)
 
 // Preflight gate (fires ONE text-only Claude call before any Gemini spend).
@@ -1833,7 +1833,9 @@ PRESERVE GARMENT IDENTITY — DO NOT REDESIGN THE STYLE:
       aspect_ratio: '3:4',
       image_size: RENDER_IMAGE_SIZE
     },
-    generation_config: { thinking_level: GEMINI_THINKING_LEVEL }   // pinned for determinism (§2)
+    // v1.23 — thinking_level only sent when the pin enables it; gemini-3.1-flash-image rejects the field outright
+    ...(GEMINI_THINKING_LEVEL && GEMINI_THINKING_LEVEL !== 'none'
+        ? { generation_config: { thinking_level: GEMINI_THINKING_LEVEL } } : {})
   });
 
   const res = await fetch('https://generativelanguage.googleapis.com/v1beta/interactions', {
